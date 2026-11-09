@@ -6,6 +6,7 @@
     python -m vision.preview --source clip.mp4     # recorded video
 
 Keep the scene empty for ~1 s while the background is learned, then throw a ball.
+Shows: camera view with the detected blob + its trail, and the foreground mask.
 Keys: q = quit, r = relearn background, s = save a screenshot.
 """
 import argparse
@@ -16,6 +17,26 @@ import cv2
 import numpy as np
 
 from .stereo_tracker import BlobDetector, DetectorConfig
+
+
+def throw_like(track, min_speed=250.0, acc_range=(500.0, 9000.0), max_rms_px=3.0):
+    """Is this 2D track a thrown object? Fast, curving DOWNWARD in the image like free fall,
+    and well described by a parabola (hand waves / swinging arms are not).
+
+    track: list of (t, x, y) image points; needs >= 7 points spanning 0.25-0.7 s.
+    """
+    if len(track) < 7:
+        return False
+    t = np.array([p[0] for p in track]); x = np.array([p[1] for p in track]); y = np.array([p[2] for p in track])
+    if not (0.25 <= t[-1] - t[0] <= 0.7):
+        return False
+    t = t - t[-1]
+    qy = np.polyfit(t, y, 2)
+    qx = np.polyfit(t, x, 1)
+    rms = float(np.sqrt(np.mean(np.concatenate([y - np.polyval(qy, t), x - np.polyval(qx, t)]) ** 2)))
+    speed = float(np.hypot(qx[0], np.polyfit(t, y, 1)[0]))
+    acc_y = 2.0 * qy[0]                              # image y grows downward
+    return speed >= min_speed and acc_range[0] <= acc_y <= acc_range[1] and rms <= max_rms_px
 
 
 def main():
@@ -36,6 +57,8 @@ def main():
     cfg = DetectorConfig(min_area=a.min_area, max_area=a.max_area)
     det = BlobDetector(cfg)
     trail = collections.deque(maxlen=30)
+    track = collections.deque(maxlen=24)   # (t, x, y) for the flight check
+    thrown_until = 0.0
     last, fps_t, fps = None, time.time(), 0.0
     n = 0
     while True:
@@ -49,11 +72,19 @@ def main():
             cx, cy, area = res
             last = (cx, cy)
             trail.append((int(cx), int(cy)))
-            cv2.circle(vis, (int(cx), int(cy)), 12, (0, 255, 0), 2)
-            cv2.putText(vis, f"ball area={area:.0f}px", (int(cx) + 14, int(cy)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            now_t = time.time()
+            track.append((now_t, cx, cy))
+            if throw_like(list(track)):
+                thrown_until = now_t + 0.5
+            is_throw = now_t < thrown_until
+            colour = (0, 255, 0) if is_throw else (150, 150, 150)
+            cv2.circle(vis, (int(cx), int(cy)), 12, colour, 2)
+            cv2.putText(vis, ("THROW" if is_throw else "moving") + f" area={area:.0f}px",
+                        (int(cx) + 14, int(cy)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1)
         else:
             last = None
+            if track and time.time() - track[-1][0] > 0.2:
+                track.clear()
         for i in range(1, len(trail)):
             cv2.line(vis, trail[i - 1], trail[i], (0, 200, 255), 2)
         learning = det.frames <= cfg.warmup_frames
@@ -70,7 +101,7 @@ def main():
         if k == ord("q"):
             break
         if k == ord("r"):
-            det = BlobDetector(cfg); trail.clear()
+            det = BlobDetector(cfg); trail.clear(); track.clear()
         if k == ord("s"):
             cv2.imwrite(f"preview_{int(time.time())}.png", panel)
     cap.release()

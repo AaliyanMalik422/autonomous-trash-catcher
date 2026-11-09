@@ -96,6 +96,7 @@ class DetectorConfig:
     open_kernel: int = 3
     dilate_iter: int = 2
     warmup_frames: int = 30        # background model learns first
+    person_exclusion_px: int = 45  # ignore small blobs this close to a large (person-sized) blob
 
 
 class BlobDetector:
@@ -119,6 +120,16 @@ class BlobDetector:
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)
         mask = cv2.dilate(mask, self.kernel, iterations=c.dilate_iter)
         cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Person-sized blobs: not candidates themselves, and small blobs touching/near them
+        # (a hand or arm, or a ball still in the hand) are not candidates either.
+        person_zone = None
+        if c.person_exclusion_px > 0:
+            big = [k for k in cnts if cv2.contourArea(k) > c.max_area]
+            if big:
+                person_zone = np.zeros(mask.shape[:2], np.uint8)
+                cv2.drawContours(person_zone, big, -1, 255, -1)
+                e = 2 * c.person_exclusion_px + 1
+                person_zone = cv2.dilate(person_zone, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (e, e)))
         best, best_score = None, -1.0
         for cnt in cnts:
             area = cv2.contourArea(cnt)
@@ -130,6 +141,8 @@ class BlobDetector:
             if m["m00"] == 0:
                 continue
             cx, cy = m["m10"] / m["m00"], m["m01"] / m["m00"]
+            if person_zone is not None and person_zone[int(cy), int(cx)]:
+                continue
             score = circ
             if last_xy is not None:     # prefer continuity with the previous detection
                 score += 0.5 / (1.0 + np.hypot(cx - last_xy[0], cy - last_xy[1]) / 40.0)
