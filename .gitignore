@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+logs/*.csv
+logs/*.json
+.vscode/
+calib_images/
+*.npz
+.pytest_cache/
