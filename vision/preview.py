@@ -19,24 +19,36 @@ import numpy as np
 from .stereo_tracker import BlobDetector, DetectorConfig
 
 
-def throw_like(track, min_speed=250.0, acc_range=(500.0, 9000.0), max_rms_px=3.0):
-    """Is this 2D track a thrown object? Fast, curving DOWNWARD in the image like free fall,
-    and well described by a parabola (hand waves / swinging arms are not).
-
-    track: list of (t, x, y) image points; needs >= 7 points spanning 0.25-0.7 s.
-    """
-    if len(track) < 7:
-        return False
+def throw_stats(track):
+    """(n_points, span_s, speed_px_s, acc_px_s2, rms_px) of a 2D track, or None if < 3 points."""
+    if len(track) < 3:
+        return None
     t = np.array([p[0] for p in track]); x = np.array([p[1] for p in track]); y = np.array([p[2] for p in track])
-    if not (0.25 <= t[-1] - t[0] <= 0.7):
-        return False
+    span = float(t[-1] - t[0])
+    if span <= 0:
+        return None
     t = t - t[-1]
-    qy = np.polyfit(t, y, 2)
+    deg = 2 if len(track) >= 4 else 1
+    qy = np.polyfit(t, y, deg)
     qx = np.polyfit(t, x, 1)
     rms = float(np.sqrt(np.mean(np.concatenate([y - np.polyval(qy, t), x - np.polyval(qx, t)]) ** 2)))
     speed = float(np.hypot(qx[0], np.polyfit(t, y, 1)[0]))
-    acc_y = 2.0 * qy[0]                              # image y grows downward
-    return speed >= min_speed and acc_range[0] <= acc_y <= acc_range[1] and rms <= max_rms_px
+    acc = 2.0 * qy[0] if deg == 2 else 0.0
+    return len(track), span, speed, float(acc), rms
+
+
+def throw_like(track, min_speed=250.0, acc_range=(300.0, 12000.0), max_rms_px=4.0,
+               min_points=5, span_range=(0.2, 0.9)):
+    """Is this 2D track a thrown object? Fast, curving DOWNWARD in the image like free fall,
+    and well described by a parabola (hand waves / swinging arms are not).
+    Works down to ~15 fps (needs >= 5 points spanning 0.2-0.9 s).
+    """
+    st = throw_stats(track)
+    if st is None:
+        return False
+    n, span, speed, acc, rms = st
+    return (n >= min_points and span_range[0] <= span <= span_range[1]
+            and speed >= min_speed and acc_range[0] <= acc <= acc_range[1] and rms <= max_rms_px)
 
 
 def main():
@@ -52,6 +64,8 @@ def main():
     if not cap.isOpened():
         raise SystemExit(f"Cannot open {a.source!r}")
     if isinstance(src, int):
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))   # MJPG usually allows 30 fps
+        cap.set(cv2.CAP_PROP_FPS, 30)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, a.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, a.height)
     cfg = DetectorConfig(min_area=a.min_area, max_area=a.max_area)
@@ -71,20 +85,27 @@ def main():
         if res is not None:
             cx, cy, area = res
             last = (cx, cy)
-            trail.append((int(cx), int(cy)))
             now_t = time.time()
             track.append((now_t, cx, cy))
             if throw_like(list(track)):
                 thrown_until = now_t + 0.5
             is_throw = now_t < thrown_until
+            if is_throw:
+                trail.append((int(cx), int(cy)))
+            else:
+                trail.clear()
             colour = (0, 255, 0) if is_throw else (150, 150, 150)
             cv2.circle(vis, (int(cx), int(cy)), 12, colour, 2)
             cv2.putText(vis, ("THROW" if is_throw else "moving") + f" area={area:.0f}px",
                         (int(cx) + 14, int(cy)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 1)
         else:
             last = None
-            if track and time.time() - track[-1][0] > 0.2:
+            if track and time.time() - track[-1][0] > 0.35:
                 track.clear()
+        st = throw_stats(list(track)) if track else None
+        if st is not None:
+            cv2.putText(vis, f"track pts={st[0]} span={st[1]:.2f}s speed={st[2]:.0f} acc={st[3]:.0f} rms={st[4]:.1f}",
+                        (10, vis.shape[0] - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 0), 1)
         for i in range(1, len(trail)):
             cv2.line(vis, trail[i - 1], trail[i], (0, 200, 255), 2)
         learning = det.frames <= cfg.warmup_frames

@@ -39,7 +39,7 @@ replies `<ACK,...>` and `<ODO,x,y,vx,vy>` at 20 Hz.
 ## Quick start
 ```bash
 pip install -r requirements.txt
-python -m pytest tests                      # 26 tests
+python -m pytest tests                      # 33 tests
 ./tests/firmware/run_firmware_test.sh       # compiles the .ino on the PC and drives a simulated robot
 python demo_trajectory_plot.py              # trajectory demo plot
 python -m trajectory.sim --accel 6 --fps 30 # catch-rate simulation
@@ -66,19 +66,26 @@ python main.py --sim-vision                 # synthetic stereo IMAGES through th
    and run with `--correction calibration.json`.
 7. Tune in `trajectory/config.py`: zone size, `latency_s` (measure it!), `send_sigma_m`, basket size.
 
-## Using two phones instead of USB webcams
-Any app that serves an MJPEG/RTSP stream works (IP Webcam on Android, DroidCam, Iriun, EpocCam).
-Pass the stream URLs instead of camera indexes:
-```bash
-python -m vision.sync_tool --left http://192.168.1.20:8080/video --right http://192.168.1.21:8080/video
-python main.py --live --left http://192.168.1.20:8080/video --right http://192.168.1.21:8080/video \
-       --right-offset-ms <value from sync_tool> --calib stereo_calib.npz --rig rig.json --port COM5
-```
-Rules that decide whether this works:
-* **Two phones are not frame-synchronised.** Run `vision.sync_tool` (wave a ball in front of both) and pass the printed offset. Re-run it if the Wi-Fi changes.
-* **Latency** is the enemy: use a dedicated 5 GHz hotspot/router (not campus Wi-Fi), or USB tethering. Choose 640x480 (or 720p) at 60 fps in the app, MJPEG, lowest quality that still shows the ball. Set `latency_s` in `trajectory/config.py` to the measured value (film a running stopwatch next to the screen showing the stream to measure it).
-* In the app lock **exposure, focus and white balance**, disable stabilisation and HDR, and mount both phones rigidly (tripod/bracket, landscape). Do the checkerboard calibration with the phones in their final position and the same app settings; moving a phone invalidates calibration.
-* A higher frame rate (60 fps) halves the time needed to see enough points of the throw (see table).
+## Phone bring-up runbook (the system is configured for two phones at 60 fps)
+Everything is set in ONE file: `config/robot.json` (stream URLs, fps, latency, serial port, home position,
+calibration files). `python main.py --live` needs no other flags once it is filled in.
+
+1. **Mount** both phones rigidly, landscape, on a bar or tripods. **Use a wide baseline, 30-50 cm** (not 10 cm):
+   it cuts depth noise and the error caused by the phones not being perfectly in sync by 3-4x.
+2. **Phone app** (IP Webcam / DroidCam / Iriun): 640x480, 60 fps, MJPEG, lock exposure + focus + white balance,
+   stabilisation off. Use a dedicated 5 GHz hotspot (or USB tethering). Put the stream URLs into `config/robot.json`.
+3. `python -m vision.phones_check` — PASS/WARN/FAIL for fps, stalls and resolution of both streams.
+4. `python -m vision.calibrate_stereo capture` then `solve --square <metres>` — checkerboard, RMS < 0.6 px.
+   (Re-do whenever a phone moves.) Write `rig.json` (camera height, tilt, position).
+5. `python -m vision.sync_tool` (wave a ball in front of both) -> put the result in `right_offset_ms`.
+6. `python -m vision.latency_test --source <URL>` (point one phone at the laptop screen) -> put the result in `latency_s`.
+7. Dry run: `python main.py --live --dry-run --show --record`; then with the robot: `python main.py --live --log-throws`.
+8. Fill `true_x,true_y` in `logs/throws.csv` after test throws, then `python -m trajectory.calibration fit logs/throws.csv --out calibration.json`.
+
+What the software already does for phones: per-camera capture threads, a clock smoother that removes network
+jitter from frame timestamps, pairing by corrected capture time, sub-frame time alignment of the two detections,
+outlier-tolerant throw filter and predictor, and a 60 fps-capable pipeline (~8 ms per frame pair at 640x480).
+Do not use 720p/1080p: processing no longer keeps up with 60 fps.
 
 ## Feasibility numbers (simulation, 300 throws, landing zone ±0.5 m around home, 15 cm basket radius)
 Prediction is accurate (≈2 cm); **the limit is how fast the robot can move**. A throw has ≈0.8 s

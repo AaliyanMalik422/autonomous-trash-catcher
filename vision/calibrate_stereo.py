@@ -20,8 +20,15 @@ from .stereo_tracker import StereoCalibration
 
 def capture(a):
     from .cameras import StereoCameras
+    from trajectory.robot_config import load_settings
+    st = load_settings()
+    a.left = a.left or st.left
+    a.right = a.right or st.right
+    if "PHONE" in str(a.left) + str(a.right):
+        raise SystemExit("Edit config/robot.json first: put the real stream URLs in left/right.")
     os.makedirs(a.out, exist_ok=True)
-    cams = StereoCameras(a.left, a.right, swap=False)
+    cams = StereoCameras(a.left, a.right, st.width, st.height, st.fps, swap=st.swap,
+                         max_skew_s=0.05)   # hold the board still while saving
     n, seq = 0, -1
     pattern = (a.cols, a.rows)
     while True:
@@ -87,8 +94,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("capture")
-    c.add_argument("--left", default="0")
-    c.add_argument("--right", default="1")
+    c.add_argument("--left")
+    c.add_argument("--right")
     c.add_argument("--cols", type=int, default=9)
     c.add_argument("--rows", type=int, default=6)
     c.add_argument("--out", default="calib_images")

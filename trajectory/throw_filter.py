@@ -104,51 +104,63 @@ class ThrowFilter:
         return abs(acc + self.g) > c.curvature_tol
 
     def _validate(self, buf):
+        """Confirm a free-flight track. Tolerates a few bad points (e.g. a mismatched stereo
+        pair): the worst points are dropped one at a time (up to ~20 %) before judging."""
         c = self.cfg
         g = self.g
-        t = np.array([p["timestamp"] for p in buf])
-        t = t - t[-1]
-        x = np.array([p["X"] for p in buf])
-        y = np.array([p["Y"] for p in buf])
-        z = np.array([p["Z"] for p in buf])
-        if t[-1] - t[0] < c.min_duration_s:
+        t_all = np.array([p["timestamp"] for p in buf])
+        t_all = t_all - t_all[-1]
+        x_all = np.array([p["X"] for p in buf])
+        y_all = np.array([p["Y"] for p in buf])
+        z_all = np.array([p["Z"] for p in buf])
+        zadj_all = z_all + 0.5 * g * t_all * t_all
+        if t_all[-1] - t_all[0] < c.min_duration_s:
             return self._reject("too short")
 
-        A = np.column_stack([np.ones_like(t), t])
-        cx, *_ = np.linalg.lstsq(A, x, rcond=None)
-        cy, *_ = np.linalg.lstsq(A, y, rcond=None)
-        z_adj = z + 0.5 * g * t * t
-        cz, *_ = np.linalg.lstsq(A, z_adj, rcond=None)
+        keep = np.ones(len(t_all), dtype=bool)
+        max_drop = max(1, len(t_all) // 5)
+        dropped = 0
+        while True:
+            t = t_all[keep]
+            A = np.column_stack([np.ones_like(t), t])
+            cx, *_ = np.linalg.lstsq(A, x_all[keep], rcond=None)
+            cy, *_ = np.linalg.lstsq(A, y_all[keep], rcond=None)
+            cz, *_ = np.linalg.lstsq(A, zadj_all[keep], rcond=None)
+            At = np.column_stack([np.ones_like(t_all), t_all])
+            rx, ry, rz = x_all - At @ cx, y_all - At @ cy, zadj_all - At @ cz
+            xy_rms = float(np.sqrt(np.mean(np.concatenate([rx[keep], ry[keep]]) ** 2)))
+            z_rms = float(np.sqrt(np.mean(rz[keep] ** 2)))
+            if xy_rms <= c.max_xy_rms and z_rms <= c.max_z_rms:
+                break
+            if dropped >= max_drop or keep.sum() - 1 < c.min_points:
+                if xy_rms > c.max_xy_rms:
+                    return self._reject(f"not straight horizontally ({xy_rms:.3f})")
+                return self._reject(f"not free flight ({z_rms:.3f})")
+            worst = np.maximum.reduce([np.abs(rx) / c.max_xy_rms, np.abs(ry) / c.max_xy_rms,
+                                       np.abs(rz) / c.max_z_rms])
+            worst[~keep] = -1.0
+            keep[int(np.argmax(worst))] = False
+            dropped += 1
 
-        rx = x - A @ cx
-        ry = y - A @ cy
-        rz = z_adj - A @ cz
-        xy_rms = float(np.sqrt(np.mean(np.concatenate([rx, ry]) ** 2)))
-        z_rms = float(np.sqrt(np.mean(rz ** 2)))
         vx, vy, vz = cx[1], cy[1], cz[1]
         speed = float(np.sqrt(vx * vx + vy * vy + vz * vz))
-
-        if xy_rms > c.max_xy_rms:
-            return self._reject(f"not straight horizontally ({xy_rms:.3f})")
-        if z_rms > c.max_z_rms:
-            return self._reject(f"not free flight ({z_rms:.3f})")
         if not (c.min_speed <= speed <= c.max_speed):
             return self._reject(f"speed {speed:.2f}")
         if c.approach_sign * vy < c.min_approach_speed:
             return self._reject("not approaching")
 
-        # Free-flight curvature check once there is enough baseline: an unconstrained
+        # Free-fall curvature check once there is enough baseline: an unconstrained
         # quadratic fit of Z must show acceleration close to -g (hand waves, bouncing
         # or oscillating things do not).
+        t = t_all[keep]
         if (t[-1] - t[0]) >= c.curvature_min_duration_s and len(t) >= 6:
-            q = np.polyfit(t, z, 2)
-            acc = 2.0 * q[0]
+            acc = 2.0 * np.polyfit(t, z_all[keep], 2)[0]
             if abs(acc + g) > c.curvature_tol:
                 return self._reject(f"vertical accel {acc:.1f} != -g")
 
         self._confirmed = True
         self.last_reason = "throw"
-        return True, buf
+        return True, self.trajectory_buffer
 
 
 if __name__ == "__main__":

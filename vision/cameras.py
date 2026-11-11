@@ -16,6 +16,7 @@ import time
 from typing import Optional, Tuple, Union
 
 import cv2
+import numpy as np
 
 Source = Union[int, str]
 
@@ -39,6 +40,38 @@ def pair_frames(t_left: float, right_hist, right_offset_s: float, max_skew_s: fl
     return best
 
 
+class ClockSmoother:
+    """Turns jittery frame-arrival stamps into the camera's true regular frame clock.
+
+    A phone captures frames at a steady rate but they ARRIVE (and get stamped) with network /
+    scheduling jitter of several ms. A robust line fit of stamp-vs-frame-number over the last
+    frames removes that jitter, so two cameras can be paired by the right frame instead of a
+    neighbouring one (a one-frame mix-up at 60 fps is a ~50 cm depth error).
+    """
+
+    def __init__(self, n=40, max_dev_frac=0.4):
+        self.n, self.max_dev_frac = n, max_dev_frac
+        self.k = []
+        self.t = []
+
+    def update(self, k: int, t: float) -> float:
+        if len(self.k) >= 8:
+            K, T = np.array(self.k, float), np.array(self.t, float)
+            slopes = np.diff(T) / np.diff(K)
+            b = float(np.median(slopes))
+            a = float(np.median(T - b * K))
+            pred = a + b * k
+            if abs(t - pred) <= self.max_dev_frac * b:
+                self.k.append(k); self.t.append(pred)       # store the smoothed time
+                self.k, self.t = self.k[-self.n:], self.t[-self.n:]
+                return pred
+            if abs(t - pred) > 4 * b:                       # clock jumped / long stall: resync
+                self.k, self.t = [], []
+        self.k.append(k); self.t.append(t)
+        self.k, self.t = self.k[-self.n:], self.t[-self.n:]
+        return t
+
+
 class _Source:
     """One camera: background thread + short frame history."""
 
@@ -57,6 +90,7 @@ class _Source:
         self.hist = collections.deque(maxlen=12)
         self.lock = threading.Lock()
         self.seq = 0
+        self.clock = ClockSmoother()
         self._stop = False
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
@@ -72,7 +106,7 @@ class _Source:
                 continue
             with self.lock:
                 self.seq += 1
-                self.hist.append((t, frame, self.seq))
+                self.hist.append((self.clock.update(self.seq, t), frame, self.seq))
 
     def snapshot(self):
         with self.lock:
@@ -98,18 +132,36 @@ class StereoCameras:
         self.L = _Source(left, width, height, fps, fourcc, caps[0])
         self.R = _Source(right, width, height, fps, fourcc, caps[1])
         self.skew_log = collections.deque(maxlen=200)
+        self.last_times = (0.0, 0.0)   # (left, right+offset) capture times of the last pair returned
 
     def read(self, last_seq: int = -1, timeout: float = 1.0):
-        """Newest synchronized pair newer than last_seq: (t, left, right, seq) or None."""
+        """Newest synchronized pair: (t, left, right, key) or None.
+
+        t is the capture time of the pair on the left camera's clock. The pair is anchored on
+        whichever camera's newest frame is OLDER after applying the offset (the slower/more
+        delayed stream), so its partner has already arrived. `key` changes for every new pair.
+        """
+        off = self.right_offset_s
         end = time.monotonic() + timeout
         while time.monotonic() < end:
-            lh = self.L.snapshot()
-            if lh and lh[-1][2] != last_seq:
-                tl, fl, sl = lh[-1]
-                item = pair_frames(tl, self.R.snapshot(), self.right_offset_s, self.max_skew_s)
-                if item is not None:
-                    self.skew_log.append(item[0] + self.right_offset_s - tl)
-                    return tl, fl, item[1], sl
+            lh, rh = self.L.snapshot(), self.R.snapshot()
+            if lh and rh:
+                tl, tr = lh[-1][0], rh[-1][0] + off
+                pair = None
+                if tl <= tr:                      # left is the older head: anchor on left
+                    item = pair_frames(tl, rh, off, self.max_skew_s)
+                    if item is not None:
+                        pair = (tl, lh[-1][1], item[1], lh[-1][2], item[2], item[0] + off - tl, (tl, item[0] + off))
+                else:                             # right is the older head: anchor on right
+                    item = pair_frames(tr, lh, 0.0, self.max_skew_s)
+                    if item is not None:
+                        pair = (tr, item[1], rh[-1][1], item[2], rh[-1][2], item[0] - tr, (item[0], tr))
+                if pair is not None:
+                    key = pair[3] * 1000003 + pair[4]
+                    if key != last_seq:
+                        self.skew_log.append(pair[5])
+                        self.last_times = pair[6]
+                        return pair[0], pair[1], pair[2], key
             time.sleep(0.001)
         return None
 

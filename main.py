@@ -29,6 +29,7 @@ from trajectory.config import Config
 from trajectory.esp32_serial import ESP32Link
 from trajectory.mock_vision import MockStereoCamera
 from trajectory.pipeline import ACTIVE, IDLE, TrajectoryEngine
+from trajectory.robot_config import DEFAULT_PATH, load_settings
 
 
 # --------------------------------------------------------------------- helpers
@@ -64,7 +65,13 @@ class Recorder:
 def build_engine(a):
     cfg = Config()
     cfg.engine.home_x, cfg.engine.home_y = a.home_x, a.home_y
-    corr = LandingCorrection.load(a.correction) if a.correction else LandingCorrection()
+    if getattr(a, "latency_s", None) is not None:
+        cfg.engine.latency_s = a.latency_s
+    if a.correction and os.path.exists(a.correction):
+        corr = LandingCorrection.load(a.correction)
+        print(f"[init] landing correction loaded from {a.correction}")
+    else:
+        corr = LandingCorrection()
     logger = ThrowLogger(a.throw_log) if a.log_throws else None
     return TrajectoryEngine(cfg, corr, logger)
 
@@ -159,8 +166,20 @@ def mode_live(a):
     import cv2
     from vision.cameras import StereoCameras
     from vision.stereo_tracker import RigGeometry, StereoCalibration, StereoTracker
+    for src in (a.left, a.right):
+        if "PHONE" in str(src):
+            raise SystemExit("Camera sources are still placeholders. Edit config/robot.json "
+                             "(or pass --left/--right) with the real stream URLs.")
+    if not os.path.exists(a.calib):
+        raise SystemExit(f"No stereo calibration at {a.calib}. Run: python -m vision.calibrate_stereo capture / solve "
+                         "(see README, phone bring-up step 3).")
     calib = StereoCalibration.load(a.calib)
-    rig = RigGeometry.load(a.rig) if a.rig else RigGeometry()
+    if a.rig and os.path.exists(a.rig):
+        rig = RigGeometry.load(a.rig)
+    else:
+        print(f"[warn] {a.rig} not found: using default rig geometry (height 1.0 m, no tilt) - 3D heights will be wrong")
+        rig = RigGeometry()
+    print(f"[init] cameras {a.left} | {a.right}  {a.fps} fps  offset {a.right_offset_ms} ms  latency {a.latency_s} s")
     tracker = StereoTracker(calib, rig)
     eng = build_engine(a)
     link = ESP32Link(port=a.port, dry_run=a.dry_run)
@@ -178,7 +197,7 @@ def mode_live(a):
                 dispatch(eng_cmd, link)
                 continue
             t, L, R, seq = r
-            pkt = tracker.process(L, R, t)
+            pkt = tracker.process(L, R, t, *cams.last_times)
             cmd = eng.update(pkt)
             dispatch(cmd, link)
             if rec:
@@ -213,17 +232,19 @@ def main():
     g.add_argument("--replay", metavar="JSON")
     ap.add_argument("--port", help="ESP32 serial port (COM5, /dev/ttyUSB0). Omit to auto-detect (live).")
     ap.add_argument("--dry-run", action="store_true", help="print commands instead of sending")
-    ap.add_argument("--calib", default="stereo_calib.npz")
+    ap.add_argument("--calib")
     ap.add_argument("--rig", help="JSON with cam_height_m, pitch_deg, cam_x_m, cam_y_m")
     ap.add_argument("--correction", help="calibration.json from trajectory.calibration fit")
-    ap.add_argument("--left", default="0", help="USB index or phone stream URL (http://ip:port/video)")
-    ap.add_argument("--right", default="1", help="USB index or phone stream URL")
-    ap.add_argument("--right-offset-ms", type=float, default=0.0,
+    ap.add_argument("--left", help="USB index or phone stream URL (http://ip:port/video)")
+    ap.add_argument("--right", help="USB index or phone stream URL")
+    ap.add_argument("--right-offset-ms", type=float, default=None,
                     help="time offset added to right-camera timestamps (measure with vision.sync_tool)")
-    ap.add_argument("--swap", action="store_true", help="swap left/right camera roles")
-    ap.add_argument("--fps", type=int, default=30)
-    ap.add_argument("--home-x", type=float, default=0.0, help="robot home X in world frame (m)")
-    ap.add_argument("--home-y", type=float, default=1.3, help="robot home Y in world frame (m)")
+    ap.add_argument("--swap", action="store_true", default=None, help="swap left/right camera roles")
+    ap.add_argument("--fps", type=int)
+    ap.add_argument("--latency-s", type=float, help="camera->decision latency (see vision.latency_test)")
+    ap.add_argument("--config", help=f"settings file (default {DEFAULT_PATH})")
+    ap.add_argument("--home-x", type=float, help="robot home X in world frame (m)")
+    ap.add_argument("--home-y", type=float, help="robot home Y in world frame (m)")
     ap.add_argument("--show", action="store_true")
     ap.add_argument("--record", action="store_true", help="save raw packets of each throw to logs/")
     ap.add_argument("--log-throws", action="store_true")
@@ -234,6 +255,15 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--realtime", action="store_true")
     a = ap.parse_args()
+    st = load_settings(a.config)               # config/robot.json (if present) + defaults
+    for name, value in (("left", st.left), ("right", st.right), ("fps", st.fps),
+                        ("right_offset_ms", st.right_offset_ms), ("latency_s", st.latency_s),
+                        ("home_x", st.home_x), ("home_y", st.home_y), ("calib", st.calib),
+                        ("rig", st.rig), ("correction", st.correction), ("swap", st.swap)):
+        if getattr(a, name, None) is None:
+            setattr(a, name, value)
+    if a.port is None:
+        a.port = st.serial_port
     if a.sim:
         mode_sim(a)
     elif a.sim_vision:

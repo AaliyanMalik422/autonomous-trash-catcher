@@ -163,6 +163,7 @@ class StereoTracker:
         self.det_l = BlobDetector(self.cfg)
         self.det_r = BlobDetector(self.cfg)
         self._last_l = None
+        self._prev = {"L": None, "R": None}     # previous detection (t, u, v) per camera
 
     def triangulate(self, ul, vl, ur, vr) -> Optional[Tuple[float, float, float]]:
         c = self.cfg
@@ -179,16 +180,45 @@ class StereoTracker:
             return None
         return xc, yc, zc
 
-    def process(self, left, right, t: Optional[float] = None) -> dict:
+    def _align(self, key, t_cam, u, v, t_ref, max_dt=0.05):
+        """Move a detection from its own capture time to t_ref using that camera's own motion.
+
+        Two phones are never exactly in sync. A ball moving sideways at 1.5 m/s with the
+        cameras only 8 ms out of step gives ~25 cm depth error (12 cm baseline); moving each
+        detection to the common time first brings that down to ~2 cm.
+        """
+        prev = self._prev[key]
+        self._prev[key] = (t_cam, u, v)
+        if prev is None or abs(t_ref - t_cam) < 1e-4:
+            return u, v
+        dt = t_cam - prev[0]
+        if not (1e-4 < dt <= max_dt):
+            return u, v
+        k = (t_ref - t_cam) / dt
+        return u + (u - prev[1]) * k, v + (v - prev[2]) * k
+
+    def process(self, left, right, t: Optional[float] = None,
+                t_left: Optional[float] = None, t_right: Optional[float] = None) -> dict:
+        """t: reference time of the pair. t_left/t_right: each camera's own capture time (same
+        clock, offset applied; `StereoCameras.last_times`). If they differ from t, each detection
+        is moved to t before triangulation."""
         t = time.monotonic() if t is None else t
+        t_left = t if t_left is None else t_left
+        t_right = t if t_right is None else t_right
         left, right = self.calib.rectify(left, right)
         dl = self.det_l.detect(left, self._last_l)
         dr = self.det_r.detect(right)
         pkt = {"timestamp": t, "detected": False, "X": 0.0, "Y": 0.0, "Z": 0.0, "blob_area": 0.0}
+        if dl is None:
+            self._prev["L"] = None
+        if dr is None:
+            self._prev["R"] = None
         if dl is None or dr is None:
             self._last_l = None
             return pkt
-        p = self.triangulate(dl[0], dl[1], dr[0], dr[1])
+        ul, vl = self._align("L", t_left, dl[0], dl[1], t)
+        ur, vr = self._align("R", t_right, dr[0], dr[1], t)
+        p = self.triangulate(ul, vl, ur, vr)
         if p is None:
             self._last_l = None
             return pkt
