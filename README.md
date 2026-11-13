@@ -155,7 +155,14 @@ Edit the left/right indices, FPS, camera time offset, measured home coordinates,
 Follow this order so problems can be isolated:
 
 1. **Camera visibility:** run `python -m vision.list_cameras --max-index 8` and confirm both phones produce readable frames.
-2. **Camera timing:** run `python -m vision.phones_check` after configuring the two sources. Confirm the frame rate is stable and determine any right-camera timestamp offset.
+2. **Camera timing:** run `python -m vision.phones_check --no-window` after configuring the two sources. Confirm the frame rate is stable. Then measure the camera offset by waving a hand or ball sharply in front of both cameras for about six seconds:
+
+```bash
+python -m vision.sync_tool --left 0 --right 1 --fps 30
+```
+
+Copy the printed offset into `right_offset_ms` in `config/robot.json`. Repeat if the match score is below 0.5 or the motions were not visible to both phones.
+
 3. **Stereo geometry:** capture and solve the checkerboard calibration; verify RMS and baseline.
 4. **Vision-only dry run:** with the robot powered but wheels clear or the robot otherwise secured, run live vision in dry-run mode:
 
