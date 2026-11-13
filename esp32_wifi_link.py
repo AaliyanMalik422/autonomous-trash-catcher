@@ -2,10 +2,11 @@
 
 Direct runner wrapper for trajectory.esp32_wifi_link.
 """
-from trajectory.esp32_wifi_link import ESP32WifiLink, main if hasattr(locals(), "main") else None
+from trajectory.esp32_wifi_link import ESP32WifiLink
 
 if __name__ == "__main__":
     import time
+
     link = ESP32WifiLink(verbose=True)
     link.ping()
     time.sleep(0.5)
