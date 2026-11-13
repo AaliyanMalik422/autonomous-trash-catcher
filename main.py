@@ -189,7 +189,7 @@ def mode_live(a):
     print(f"[init] cameras {a.left} | {a.right}  {a.fps} fps  offset {a.right_offset_ms} ms  latency {a.latency_s} s")
     tracker = StereoTracker(calib, rig)
     eng = build_engine(a)
-    link = ESP32Link(port=a.port, dry_run=a.dry_run)
+    link = make_link(a)
     rec = Recorder() if a.record else None
     cams = StereoCameras(a.left, a.right, calib.image_size[0], calib.image_size[1], a.fps, a.swap,
                          right_offset_s=a.right_offset_ms / 1000.0)
