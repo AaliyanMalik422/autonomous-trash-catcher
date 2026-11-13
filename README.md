@@ -27,9 +27,7 @@ cameras ─► vision/StereoTracker ─► trajectory/TrajectoryEngine ─► ES
 * **Skid-Steer Locomotion (WiFi UDP / BTS7960) (`skid_steer_locomotion/`):**
   * `skid_steer_locomotion/skid_steer_locomotion.ino`: Firmware for 4-wheel skid-steer drive powered by 2x BTS7960 motor drivers with wheel encoders (JGB37-520). Features closed-loop PI speed control, odometry, position controller with dynamic braking curve, web joystick UI on port 80, and high-speed UDP command link on port 4210.
   * `trajectory/esp32_wifi_link.py` / `esp32_wifi_link.py`: UDP client link sending `<POS,x,y>`, `<HOME>`, `<STOP>`, `<ZERO>`, `<VEL,vx,vy,w>` and receiving `<ACK,...>` and `<ODO,x,y,vx,vy>` telemetry at 20 Hz.
-* **Mecanum Locomotion (Serial) (`mecanum_locomotion/`):**
-  * `mecanum_locomotion/mecanum_locomotion.ino`: Firmware for 4-wheel omnidirectional mecanum chassis with encoder feedback and PI speed control over 115200 baud USB serial.
-  * `trajectory/esp32_serial.py`: Serial protocol link with port auto-detection and rate limiting.
+* **USB serial transport (`trajectory/esp32_serial.py`):** The Python serial client is present, but the matching Mecanum firmware source (`mecanum_locomotion/mecanum_locomotion.ino`) is not in this checkout. Do not use the serial mode with a robot until matching firmware is added and validated.
 
 ---
 
@@ -48,11 +46,11 @@ cameras ─► vision/StereoTracker ─► trajectory/TrajectoryEngine ─► ES
 | `trajectory/pipeline.py` | `TrajectoryEngine`: orchestrates filtering, prediction, and robot commands |
 | `trajectory/calibration.py` | Systematic landing correction model fitted from logged real throws |
 | `trajectory/esp32_wifi_link.py` | WiFi UDP link for skid-steer car (TrashBot AP, port 4210) |
-| `trajectory/esp32_serial.py` | USB serial link for mecanum chassis (115200 baud) |
+| `trajectory/esp32_serial.py` | USB serial transport client (115200 baud); matching firmware is currently absent |
 | `trajectory/sim.py` | Closed-loop simulation measuring catch rate against robot acceleration |
 | `skid_steer_locomotion/` | ESP32 firmware for skid-steer drive (2x BTS7960, encoders, WiFi UDP + Web UI) |
-| `mecanum_locomotion/` | ESP32 firmware for 4-wheel mecanum drive (PI control, odometry, serial) |
-| `tests/` | Automated test suite (34 unit tests + C++ host firmware tests) |
+| `tests/firmware/` | Legacy C++ host harness; currently skipped because its Mecanum firmware source is absent |
+| `tests/` | Python unit tests for vision, trajectory, transport selection, and camera settings |
 
 ---
 
@@ -72,7 +70,7 @@ cameras ─► vision/StereoTracker ─► trajectory/TrajectoryEngine ─► ES
 ```bash
 pip install -r requirements.txt
 python -m pytest tests                      # 34 tests covering vision, trajectory & links
-./tests/firmware/run_firmware_test.sh       # compiles firmware on PC & tests motion control
+# The legacy C++ firmware harness is skipped until mecanum_locomotion.ino is restored.
 python demo_trajectory_plot.py              # 3D trajectory visualization plot
 python main.py --sim                        # dry-run simulation of synthetic throws
 python main.py --sim-vision                 # synthetic stereo images through full vision pipeline
@@ -93,12 +91,9 @@ python main.py --sim-vision                 # synthetic stereo images through fu
    python main.py --live --wifi --calib stereo_calib.npz --rig rig.json
    ```
 
-### 3. Mecanum Chassis Bring-Up (USB Serial)
-1. Flash `mecanum_locomotion/mecanum_locomotion.ino` to the ESP32.
-2. Connect via USB cable. Run:
-   ```bash
-   python main.py --live --port /dev/ttyUSB0 --calib stereo_calib.npz --rig rig.json
-   ```
+### 3. USB Serial Transport
+
+The Python serial client (`trajectory/esp32_serial.py`) is retained, but this checkout does not contain its matching Mecanum firmware. Serial robot operation is therefore not a supported bring-up path until that firmware is restored and tested.
 
 ### 4. Camera Calibration (Webcams or Phones)
 * **For 2 USB Webcams:**
@@ -123,6 +118,6 @@ python main.py --sim-vision                 # synthetic stereo images through fu
 ---
 
 ## Status
-* **Module 1 (Stereo Vision & Trajectory Prediction):** Complete and verified.
-* **Module 2 (Locomotion & Interception):** Complete and verified (both Skid-Steer WiFi and Mecanum Serial supported).
-* **Module 3 (Payload Sensing & Auto-Emptying):** Planned next.
+* **Module 1 (Stereo Vision & Trajectory Prediction):** Core code and synthetic tests are present. Real-camera calibration and real-throw validation still depend on the physical setup.
+* **Module 2 (Locomotion & Interception):** Skid-steer ESP32 firmware and its Wi-Fi Python link are present. Physical robot validation is not demonstrated by the committed automated tests. The serial client exists, but its matching Mecanum firmware is absent.
+* **Module 3 (Payload Sensing & Auto-Emptying):** Not implemented in this checkout.
