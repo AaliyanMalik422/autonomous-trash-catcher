@@ -17,7 +17,7 @@ class RobotSettings:
     left: str = "0"
     right: str = "1"
     swap: bool = False                 # set true if "left" is actually the right-hand camera
-    fps: int = 60
+    fps: int = 30
     width: int = 640                   # 640x480 is the sweet spot: ~8 ms/frame-pair on a laptop CPU
     height: int = 480
     right_offset_ms: float = 0.0       # from `python -m vision.sync_tool`
