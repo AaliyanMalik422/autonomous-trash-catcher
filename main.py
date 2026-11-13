@@ -189,14 +189,22 @@ def mode_live(a):
     print(f"[init] cameras {a.left} | {a.right}  {a.fps} fps  offset {a.right_offset_ms} ms  latency {a.latency_s} s")
     tracker = StereoTracker(calib, rig)
     eng = build_engine(a)
-    link = make_link(a)
     rec = Recorder() if a.record else None
     cams = StereoCameras(a.left, a.right, calib.image_size[0], calib.image_size[1], a.fps, a.swap,
                          right_offset_s=a.right_offset_ms / 1000.0)
-    print("Learning background... keep the zone empty for ~2 s. Press q (with --show) or Ctrl+C to quit.")
-    link.zero()
+    link = make_link(a)
     seq, was_active = -1, False
     try:
+        if not a.dry_run:
+            link.ping()
+            deadline = time.monotonic() + 1.5
+            while link.last_ack is None and time.monotonic() < deadline:
+                time.sleep(0.02)
+            if link.last_ack is None or link.last_ack[0] != "PING":
+                raise SystemExit("No <ACK,PING> from the skid-steer ESP32. Check the TrashBot Wi-Fi connection; no motion command was sent.")
+            print("[init] ESP32 Wi-Fi link verified")
+        link.zero()
+        print("Learning background... keep the zone empty for ~2 s. Press q (with --show) or Ctrl+C to quit.")
         while True:
             r = cams.read(seq, timeout=0.5)
             if r is None:
