@@ -4,7 +4,7 @@ Coordinate convention (shared with vision/):
     X  left/right of the camera pair (m, +right)
     Y  forward depth from the cameras (m)
     Z  height above the floor (m)
-All timestamps are seconds on one monotonic clock.
+All timestamps are seconds on one monotonic clock shared by capture and prediction.
 """
 from dataclasses import dataclass, field
 
