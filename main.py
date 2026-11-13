@@ -94,6 +94,13 @@ def dispatch(cmd, link, verbose=True):
 
 
 def make_link(a):
+    if getattr(a, "wifi", False):
+        from trajectory.esp32_wifi_link import ESP32WifiLink
+        return ESP32WifiLink(ip=getattr(a, "wifi_ip", "192.168.4.1"),
+                             port=getattr(a, "wifi_port", 4210),
+                             dry_run=a.dry_run,
+                             verbose=getattr(a, "verbose", False),
+                             min_interval_s=0.02 if a.realtime else 0.0)
     dry = a.dry_run or a.port is None
     return ESP32Link(port=a.port, dry_run=dry, verbose=False,
                      min_interval_s=0.02 if a.realtime else 0.0)
@@ -231,6 +238,9 @@ def main():
     g.add_argument("--live", action="store_true")
     g.add_argument("--replay", metavar="JSON")
     ap.add_argument("--port", help="ESP32 serial port (COM5, /dev/ttyUSB0). Omit to auto-detect (live).")
+    ap.add_argument("--wifi", action="store_true", help="connect to the car over WiFi UDP (TrashBot AP) instead of serial")
+    ap.add_argument("--wifi-ip", help="car WiFi IP (default from config/robot.json or 192.168.4.1)")
+    ap.add_argument("--wifi-port", type=int, help="car WiFi UDP port (default from config/robot.json or 4210)")
     ap.add_argument("--dry-run", action="store_true", help="print commands instead of sending")
     ap.add_argument("--calib")
     ap.add_argument("--rig", help="JSON with cam_height_m, pitch_deg, cam_x_m, cam_y_m")
@@ -259,9 +269,12 @@ def main():
     for name, value in (("left", st.left), ("right", st.right), ("fps", st.fps),
                         ("right_offset_ms", st.right_offset_ms), ("latency_s", st.latency_s),
                         ("home_x", st.home_x), ("home_y", st.home_y), ("calib", st.calib),
-                        ("rig", st.rig), ("correction", st.correction), ("swap", st.swap)):
+                        ("rig", st.rig), ("correction", st.correction), ("swap", st.swap),
+                        ("wifi_ip", st.wifi_ip), ("wifi_port", st.wifi_port)):
         if getattr(a, name, None) is None:
             setattr(a, name, value)
+    if not a.wifi and getattr(st, "wifi", False):
+        a.wifi = True
     if a.port is None:
         a.port = st.serial_port
     if a.sim:

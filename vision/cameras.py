@@ -21,6 +21,26 @@ import numpy as np
 Source = Union[int, str]
 
 
+def open_capture(source: Source, width=640, height=480, fps=30, fourcc="MJPG"):
+    """cv2.VideoCapture with short network timeouts (the default waits 30 s on a dead stream)."""
+    if isinstance(source, str):
+        try:
+            cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG,
+                                   [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2500])
+        except Exception:
+            cap = cv2.VideoCapture(source)
+    else:
+        cap = cv2.VideoCapture(source, cv2.CAP_ANY)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            cap.set(cv2.CAP_PROP_FPS, fps)
+    if cap.isOpened():
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    return cap
+
+
 def parse_source(s) -> Source:
     return int(s) if isinstance(s, (int,)) or str(s).isdigit() else str(s)
 
@@ -73,37 +93,52 @@ class ClockSmoother:
 
 
 class _Source:
-    """One camera: background thread + short frame history."""
+    """One camera: background thread + short frame history. Reconnects after a stall."""
+
+    RECONNECT_AFTER_S = 3.0
 
     def __init__(self, source: Source, width, height, fps, fourcc="MJPG", capture=None):
+        self.source, self.w, self.h, self.fps, self.fourcc = source, width, height, fps, fourcc
         self.cap = capture
+        self._injected = capture is not None
         if self.cap is None:
-            self.cap = cv2.VideoCapture(source, cv2.CAP_ANY)
+            self.cap = open_capture(source, width, height, fps, fourcc)
             if not self.cap.isOpened():
                 raise RuntimeError(f"Could not open camera source {source!r}")
-            if isinstance(source, int):   # network streams ignore these (set them in the phone app)
-                self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-                self.cap.set(cv2.CAP_PROP_FPS, fps)
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self.hist = collections.deque(maxlen=12)
         self.lock = threading.Lock()
         self.seq = 0
         self.clock = ClockSmoother()
+        self.reconnects = 0
+        self.last_ok = time.monotonic()
         self._stop = False
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
+    def _reconnect(self):
+        self.reconnects += 1
+        try:
+            self.cap.release()
+        except Exception:
+            pass
+        time.sleep(0.5)
+        self.cap = open_capture(self.source, self.w, self.h, self.fps, self.fourcc)
+        self.clock = ClockSmoother()
+        self.last_ok = time.monotonic()
+
     def _run(self):
         while not self._stop:
-            if not self.cap.grab():
-                time.sleep(0.005)
-                continue
+            ok = self.cap.grab()
             t = time.monotonic()
-            ok, frame = self.cap.retrieve()
+            if ok:
+                ok, frame = self.cap.retrieve()
             if not ok or frame is None:
+                if not self._injected and t - self.last_ok > self.RECONNECT_AFTER_S:
+                    self._reconnect()
+                else:
+                    time.sleep(0.005)
                 continue
+            self.last_ok = t
             with self.lock:
                 self.seq += 1
                 self.hist.append((self.clock.update(self.seq, t), frame, self.seq))
@@ -114,7 +149,7 @@ class _Source:
 
     def release(self):
         self._stop = True
-        self.thread.join(timeout=1.0)
+        self.thread.join(timeout=3.0)
         self.cap.release()
 
 

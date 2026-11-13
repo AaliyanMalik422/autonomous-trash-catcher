@@ -23,6 +23,9 @@ class RobotSettings:
     right_offset_ms: float = 0.0       # from `python -m vision.sync_tool`
     latency_s: float = 0.12            # from `python -m vision.latency_test` (camera->decision)
     # --- robot ---
+    wifi: bool = False                 # true = use WiFi UDP link (TrashBot AP); false = serial
+    wifi_ip: str = "192.168.4.1"       # default ESP32 AP IP address
+    wifi_port: int = 4210              # default ESP32 UDP port
     serial_port: Optional[str] = None  # e.g. "/dev/ttyUSB0" or "COM5"; null = auto-detect
     home_x: float = 0.0                # robot rest position in world frame (m)
     home_y: float = 1.3

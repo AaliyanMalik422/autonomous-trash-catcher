@@ -50,6 +50,18 @@ def verdict(stats, target_fps, size, want_size):
     return level, msgs
 
 
+class _SingleRig:
+    """Looks like StereoCameras but opens ONE stream (the right side mirrors the left)."""
+
+    def __init__(self, src, w, h, fps):
+        from vision.cameras import _Source, parse_source
+        self.L = _Source(parse_source(src), w, h, fps)
+        self.R = self.L
+
+    def release(self):
+        self.L.release()
+
+
 def main():
     s = load_settings()
     ap = argparse.ArgumentParser()
@@ -60,11 +72,17 @@ def main():
     ap.add_argument("--height", type=int, default=s.height)
     ap.add_argument("--seconds", type=float, default=8.0)
     ap.add_argument("--no-window", action="store_true")
+    ap.add_argument("--single", action="store_true",
+                    help="only check the --left stream (one phone; never open the same URL twice)")
+    ap.add_argument("--warmup", type=float, default=1.0, help="seconds ignored at the start")
     a = ap.parse_args()
-    if "PHONE" in str(a.left) + str(a.right):
+    if "PHONE" in str(a.left) + ("" if a.single else str(a.right)):
         raise SystemExit("Edit config/robot.json first: replace PHONE1_IP / PHONE2_IP with the stream URLs.")
     from vision.cameras import StereoCameras
-    cams = StereoCameras(a.left, a.right, a.width, a.height, a.fps, max_skew_s=1e9)
+    if a.single:
+        a.right = a.left
+    cams = StereoCameras(a.left, a.right, a.width, a.height, a.fps, max_skew_s=1e9) if not a.single \
+        else _SingleRig(a.left, a.width, a.height, a.fps)
     times = {"L": [], "R": []}
     seen = {"L": -1, "R": -1}
     size = {"L": None, "R": None}
@@ -88,8 +106,10 @@ def main():
     cams.release()
     cv2.destroyAllWindows()
     worst = "PASS"
-    for name, label in (("L", "left "), ("R", "right")):
-        st = summarize(times[name])
+    names = (("L", "phone"),) if a.single else (("L", "left "), ("R", "right"))
+    for name, label in names:
+        t0 = times[name][0] if times[name] else 0.0
+        st = summarize([t for t in times[name] if t >= t0 + a.warmup])
         lvl, msgs = verdict(st, a.fps, size[name] or (0, 0), (a.width, a.height))
         print(f"[{lvl}] {label}: {size[name]} {st['fps']:.1f} fps, jitter {st['jitter_ms']:.1f} ms, "
               f"longest stall {st['max_gap_ms']:.0f} ms")
