@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from trajectory.mock_vision import MockStereoCamera
 from vision.stereo_tracker import RigGeometry, StereoCalibration, StereoTracker
+from vision.cameras import parse_source
 from vision.synthetic import SyntheticRig
 
 
@@ -138,3 +139,9 @@ def test_async_stereo_cameras_with_fake_captures():
     cams.release()
     assert got >= 10
     assert skew.max() < 0.6 / 30 + 1e-6
+
+
+def test_parse_usb_camera_indices_and_stream_urls():
+    assert parse_source("0") == 0
+    assert parse_source("1") == 1
+    assert parse_source("http://192.168.1.20:8080/video") == "http://192.168.1.20:8080/video"

@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from trajectory.calibration import LandingCorrection, ThrowLogger, load_pairs
 from trajectory.config import Config
-from trajectory.esp32_serial import ESP32Link
 from trajectory.esp32_wifi_link import ESP32WifiLink
 from trajectory.mock_vision import MockStereoCamera
 from trajectory.pipeline import ACTIVE, COOLDOWN, IDLE, TrajectoryEngine, reach_distance
@@ -192,6 +191,12 @@ def test_engine_clamps_out_of_reach():
     assert abs(t.x) <= 0.3 + 1e-9 and abs(t.y) <= 0.3 + 1e-9
 
 
+def test_reachability_uses_skid_steer_position_limits():
+    cfg = Config()
+    assert cfg.engine.max_speed == pytest.approx(0.9)
+    assert cfg.engine.max_accel == pytest.approx(3.6)
+
+
 def test_reach_distance():
     assert reach_distance(0, 3, 2) == 0
     assert reach_distance(0.2, 3, 2) == pytest.approx(0.06)
@@ -231,15 +236,7 @@ def test_logger_roundtrip(tmp_path):
     assert len(load_pairs(path)[0]) == 0   # true landing not filled in yet
 
 
-# ------------------------------------------------------------------ serial / wifi
-def test_serial_dry_run_format_and_rate_limit():
-    link = ESP32Link(dry_run=True, min_interval_s=0.05)
-    assert link.send_target(0.123456, -0.5)
-    assert not link.send_target(0.2, 0.2)          # rate limited
-    link.home(); link.stop()                        # forced
-    assert link.sent == ["<POS,0.123,-0.500>", "<HOME>", "<STOP>"]
-
-
+# ---------------------------------------------------------------- skid-steer wifi
 def test_wifi_link_dry_run_and_parity():
     link = ESP32WifiLink(dry_run=True, min_interval_s=0.05)
     assert link.send_target(0.123456, -0.5)

@@ -4,7 +4,7 @@ Coordinate convention (shared with vision/):
     X  left/right of the camera pair (m, +right)
     Y  forward depth from the cameras (m)
     Z  height above the floor (m)
-All timestamps are seconds on one monotonic clock.
+All timestamps are seconds on one monotonic clock shared by capture and prediction.
 """
 from dataclasses import dataclass, field
 
@@ -66,8 +66,8 @@ class EngineConfig:
     sign_x: float = 1.0            # robot +x (strafe right) = sign_x * camera X
     sign_y: float = 1.0            # robot +y (forward)      = sign_y * camera Y
     # robot dynamics for the reachability estimate
-    max_accel: float = 3.0         # m/s^2 (firmware MAX_LIN_ACCEL)
-    max_speed: float = 1.8         # m/s
+    max_accel: float = 3.6         # m/s^2; conservative firmware braking acceleration (0.6 * MAX_LIN_DECEL)
+    max_speed: float = 0.9         # m/s; firmware POS_MAX_V for autonomous position moves
 
 
 @dataclass

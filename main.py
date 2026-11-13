@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Autonomous trash-catching robot: end-to-end orchestrator.
 
-    cameras -> StereoTracker (vision/) -> TrajectoryEngine (trajectory/) -> ESP32Link -> robot
+    USB cameras -> StereoTracker (vision/) -> TrajectoryEngine (trajectory/) -> ESP32 Wi-Fi UDP -> skid-steer robot
 
 Modes
     python main.py --sim                       # synthetic throws -> engine, no hardware (dry-run)
-    python main.py --sim --port COM5 --realtime  # replay synthetic throws to the REAL robot in real time
+    python main.py --sim --realtime            # explicitly replay synthetic throws to the REAL robot
     python main.py --sim-vision                # synthetic stereo IMAGES through the full vision path
-    python main.py --live --calib stereo_calib.npz --rig rig.json --port COM5
+    python main.py --live --calib stereo_calib.npz --rig rig.json
     python main.py --live ... --dry-run        # real cameras, print commands instead of driving
     python main.py --replay logs/throw_0001.json   # re-run a recorded throw through the engine
 
@@ -26,7 +26,6 @@ import numpy as np
 
 from trajectory.calibration import LandingCorrection, ThrowLogger
 from trajectory.config import Config
-from trajectory.esp32_serial import ESP32Link
 from trajectory.mock_vision import MockStereoCamera
 from trajectory.pipeline import ACTIVE, IDLE, TrajectoryEngine
 from trajectory.robot_config import DEFAULT_PATH, load_settings
@@ -93,17 +92,18 @@ def dispatch(cmd, link, verbose=True):
         link.stop()
 
 
-def make_link(a):
-    if getattr(a, "wifi", False):
-        from trajectory.esp32_wifi_link import ESP32WifiLink
-        return ESP32WifiLink(ip=getattr(a, "wifi_ip", "192.168.4.1"),
-                             port=getattr(a, "wifi_port", 4210),
-                             dry_run=a.dry_run,
-                             verbose=getattr(a, "verbose", False),
-                             min_interval_s=0.02 if a.realtime else 0.0)
-    dry = a.dry_run or a.port is None
-    return ESP32Link(port=a.port, dry_run=dry, verbose=False,
-                     min_interval_s=0.02 if a.realtime else 0.0)
+def make_link(a, force_dry_run=False):
+    """Create the skid-steer UDP link.
+
+    Simulations are dry-run by default. Only --realtime explicitly permits
+    synthetic/replayed commands to reach the physical robot.
+    """
+    from trajectory.esp32_wifi_link import ESP32WifiLink
+    return ESP32WifiLink(ip=getattr(a, "wifi_ip", "192.168.4.1"),
+                         port=getattr(a, "wifi_port", 4210),
+                         dry_run=a.dry_run or force_dry_run,
+                         verbose=getattr(a, "verbose", False),
+                         min_interval_s=0.02 if a.realtime else 0.0)
 
 
 # ----------------------------------------------------------------------- modes
@@ -127,7 +127,7 @@ def run_packets(packets, eng, link, realtime=False, quiet=False):
 
 def mode_sim(a):
     eng = build_engine(a)
-    link = make_link(a)
+    link = make_link(a, force_dry_run=not a.realtime)
     t = 0.0
     for i in range(a.n):
         cam = MockStereoCamera(fps=a.fps, noise_std_meters=a.noise, seed=a.seed + i, t0=t)
@@ -149,7 +149,7 @@ def mode_sim_vision(a):
     for i in range(40):
         tr.process(*rig.render(None), t=-1 + i * 0.01)
     eng = build_engine(a)
-    link = make_link(a)
+    link = make_link(a, force_dry_run=True)
     cam = MockStereoCamera(fps=a.fps, noise_std_meters=0.0, seed=a.seed)
     pk, tl = cam.random_throw(home=(eng.cfg.engine.home_x, eng.cfg.engine.home_y))
     print(f"true landing X={tl['X_land']:+.3f} Y={tl['Y_land']:+.3f}")
@@ -166,7 +166,7 @@ def mode_sim_vision(a):
 def mode_replay(a):
     with open(a.replay) as f:
         pk = json.load(f)
-    run_packets(pk, build_engine(a), make_link(a), realtime=a.realtime)
+    run_packets(pk, build_engine(a), make_link(a, force_dry_run=not a.realtime), realtime=a.realtime)
 
 
 def mode_live(a):
@@ -189,14 +189,22 @@ def mode_live(a):
     print(f"[init] cameras {a.left} | {a.right}  {a.fps} fps  offset {a.right_offset_ms} ms  latency {a.latency_s} s")
     tracker = StereoTracker(calib, rig)
     eng = build_engine(a)
-    link = ESP32Link(port=a.port, dry_run=a.dry_run)
     rec = Recorder() if a.record else None
     cams = StereoCameras(a.left, a.right, calib.image_size[0], calib.image_size[1], a.fps, a.swap,
                          right_offset_s=a.right_offset_ms / 1000.0)
-    print("Learning background... keep the zone empty for ~2 s. Press q (with --show) or Ctrl+C to quit.")
-    link.zero()
+    link = make_link(a)
     seq, was_active = -1, False
     try:
+        if not a.dry_run:
+            link.ping()
+            deadline = time.monotonic() + 1.5
+            while link.last_ack is None and time.monotonic() < deadline:
+                time.sleep(0.02)
+            if link.last_ack is None or link.last_ack[0] != "PING":
+                raise SystemExit("No <ACK,PING> from the skid-steer ESP32. Check the TrashBot Wi-Fi connection; no motion command was sent.")
+            print("[init] ESP32 Wi-Fi link verified")
+        link.zero()
+        print("Learning background... keep the zone empty for ~2 s. Press q (with --show) or Ctrl+C to quit.")
         while True:
             r = cams.read(seq, timeout=0.5)
             if r is None:
@@ -237,10 +245,8 @@ def main():
     g.add_argument("--sim-vision", action="store_true")
     g.add_argument("--live", action="store_true")
     g.add_argument("--replay", metavar="JSON")
-    ap.add_argument("--port", help="ESP32 serial port (COM5, /dev/ttyUSB0). Omit to auto-detect (live).")
-    ap.add_argument("--wifi", action="store_true", help="connect to the car over WiFi UDP (TrashBot AP) instead of serial")
-    ap.add_argument("--wifi-ip", help="car WiFi IP (default from config/robot.json or 192.168.4.1)")
-    ap.add_argument("--wifi-port", type=int, help="car WiFi UDP port (default from config/robot.json or 4210)")
+    ap.add_argument("--wifi-ip", help="skid-steer ESP32 AP IP (default 192.168.4.1)")
+    ap.add_argument("--wifi-port", type=int, help="skid-steer UDP port (default 4210)")
     ap.add_argument("--dry-run", action="store_true", help="print commands instead of sending")
     ap.add_argument("--calib")
     ap.add_argument("--rig", help="JSON with cam_height_m, pitch_deg, cam_x_m, cam_y_m")
@@ -273,10 +279,6 @@ def main():
                         ("wifi_ip", st.wifi_ip), ("wifi_port", st.wifi_port)):
         if getattr(a, name, None) is None:
             setattr(a, name, value)
-    if not a.wifi and getattr(st, "wifi", False):
-        a.wifi = True
-    if a.port is None:
-        a.port = st.serial_port
     if a.sim:
         mode_sim(a)
     elif a.sim_vision:

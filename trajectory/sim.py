@@ -3,7 +3,7 @@
 Answers the key feasibility question: *given the robot's real acceleration and the
 camera frame rate, what fraction of throws can actually be caught?*
 
-    python -m trajectory.sim --n 300 --fps 30 --accel 3 --reach 0.5
+    python -m trajectory.sim --n 300 --fps 30 --accel 3.6 --speed 0.9 --reach 0.5
 """
 import argparse
 from dataclasses import dataclass
@@ -56,7 +56,7 @@ class SimResult:
     mean_miss: float
 
 
-def run_sim(n=300, fps=30, accel=3.0, speed=1.8, reach=0.5, basket_radius=0.15,
+def run_sim(n=300, fps=30, accel=3.6, speed=0.9, reach=0.5, basket_radius=0.15,
             noise=0.025, latency=0.08, seed=0, cfg=None, verbose=False):
     cfg = cfg or Config()
     cfg.engine.max_accel, cfg.engine.max_speed = accel, speed
@@ -108,8 +108,8 @@ def _main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--fps", type=int, default=30)
-    ap.add_argument("--accel", type=float, default=3.0)
-    ap.add_argument("--speed", type=float, default=1.8)
+    ap.add_argument("--accel", type=float, default=3.6)
+    ap.add_argument("--speed", type=float, default=0.9)
     ap.add_argument("--reach", type=float, default=0.5, help="half-size of landing zone around home (m)")
     ap.add_argument("--basket", type=float, default=0.15, help="catch radius (m)")
     ap.add_argument("--noise", type=float, default=0.025)
