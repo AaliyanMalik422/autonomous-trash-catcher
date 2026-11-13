@@ -77,7 +77,7 @@ def main():
     ap.add_argument("--warmup", type=float, default=1.0, help="seconds ignored at the start")
     a = ap.parse_args()
     if "PHONE" in str(a.left) + ("" if a.single else str(a.right)):
-        raise SystemExit("Edit config/robot.json first: replace PHONE1_IP / PHONE2_IP with the stream URLs.")
+        raise SystemExit("Edit config/robot.json: set left/right to the detected USB camera indices or valid camera stream URLs.")
     from vision.cameras import StereoCameras
     if a.single:
         a.right = a.left
