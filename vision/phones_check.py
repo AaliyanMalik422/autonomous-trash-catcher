@@ -1,4 +1,4 @@
-"""Step 1 of phone bring-up: are both streams alive, fast and steady enough?
+"""Step 1 of phone bring-up: are both USB/UVC camera devices alive, fast and steady enough?
 
     python -m vision.phones_check                    # uses config/robot.json
     python -m vision.phones_check --left URL --right URL --fps 60 --seconds 8
@@ -34,10 +34,10 @@ def verdict(stats, target_fps, size, want_size):
         level = order[max(order.index(level), order.index(l))]
 
     if stats["n"] < 5:
-        return "FAIL", ["no frames received - check the URL / same Wi-Fi network / app is streaming"]
+        return "FAIL", ["no frames received - check the camera index, USB webcam mode, data cable and OS camera permissions"]
     if stats["fps"] < 0.5 * target_fps:
         worse("FAIL"); msgs.append(f"only {stats['fps']:.0f} fps (target {target_fps}): lower resolution/quality "
-                                   "in the app, use 5 GHz Wi-Fi or USB tethering, and turn the lights on")
+                                   "check the USB cable/port and camera output mode, reduce resolution if needed, and improve lighting")
     elif stats["fps"] < 0.85 * target_fps:
         worse("WARN"); msgs.append(f"{stats['fps']:.0f} fps is below target {target_fps}")
     if stats["max_gap_ms"] > 150:
@@ -46,7 +46,7 @@ def verdict(stats, target_fps, size, want_size):
         worse("WARN"); msgs.append(f"uneven frame timing ({stats['jitter_ms']:.1f} ms jitter)")
     if size != want_size:
         worse("WARN"); msgs.append(f"stream is {size[0]}x{size[1]}, expected {want_size[0]}x{want_size[1]}: "
-                                   "set the resolution in the phone app (calibration must use the same size)")
+                                   "set the camera output resolution (calibration must use the same size)")
     return level, msgs
 
 
