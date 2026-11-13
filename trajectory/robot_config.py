@@ -22,11 +22,9 @@ class RobotSettings:
     height: int = 480
     right_offset_ms: float = 0.0       # from `python -m vision.sync_tool`
     latency_s: float = 0.12            # from `python -m vision.latency_test` (camera->decision)
-    # --- robot ---
-    wifi: bool = True                  # selected skid-steer firmware uses WiFi UDP (TrashBot AP)
+    # --- selected skid-steer robot (Wi-Fi UDP) ---
     wifi_ip: str = "192.168.4.1"       # default ESP32 AP IP address
     wifi_port: int = 4210              # default ESP32 UDP port
-    serial_port: Optional[str] = None  # legacy serial fallback; not used by the selected skid-steer build
     home_x: float = 0.0                # robot rest position in world frame (m)
     home_y: float = 1.3
     # --- files produced during bring-up ---
