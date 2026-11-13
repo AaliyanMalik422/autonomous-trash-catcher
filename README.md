@@ -21,7 +21,7 @@ PHONE CAMERA 2 ─┘                              │
 
 The phones connect to the laptop as two separate USB camera devices. The laptop connects to the ESP32's `TrashBot` Wi-Fi access point. These are two independent connections: **USB for the cameras, Wi-Fi for the robot**.
 
-The current chassis is **skid-steer**, not Mecanum or omni-wheel. It cannot strafe sideways. The firmware accepts a target in its odometry frame, turns toward it, and then drives forward or in reverse while correcting its heading.
+The current chassis is **skid-steer**, not an omni-wheel. It cannot strafe sideways. The firmware accepts a target in its odometry frame, turns toward it, and then drives forward or in reverse while correcting its heading.
 
 ## Module 1 — Stereo Vision & Trajectory Prediction (Laptop)
 
