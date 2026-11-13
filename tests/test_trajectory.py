@@ -191,6 +191,12 @@ def test_engine_clamps_out_of_reach():
     assert abs(t.x) <= 0.3 + 1e-9 and abs(t.y) <= 0.3 + 1e-9
 
 
+def test_reachability_uses_skid_steer_position_limits():
+    cfg = Config()
+    assert cfg.engine.max_speed == pytest.approx(0.9)
+    assert cfg.engine.max_accel == pytest.approx(3.6)
+
+
 def test_reach_distance():
     assert reach_distance(0, 3, 2) == 0
     assert reach_distance(0.2, 3, 2) == pytest.approx(0.06)
