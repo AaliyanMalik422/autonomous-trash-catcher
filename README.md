@@ -48,7 +48,7 @@ The laptop sends:
 - `<STOP>`: stop the robot.
 - `<PING>`: check communication.
 
-The ESP32 replies with `<ACK,...>` and periodic `<ODO,x,y,vx,vy>` telemetry. The firmware's position controller performs the turning and driving; the laptop does not send Mecanum wheel speeds.
+The ESP32 replies with `<ACK,...>` and periodic `<ODO,x,y,vx,vy>` telemetry. The firmware's position controller performs the turning and driving; the laptop does not send individual wheel speeds.
 
 ## Hardware and physical setup
 
