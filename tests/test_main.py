@@ -13,7 +13,6 @@ def test_make_link_uses_wifi_when_requested(monkeypatch):
 
     monkeypatch.setattr("trajectory.esp32_wifi_link.ESP32WifiLink", FakeWifiLink)
     args = SimpleNamespace(
-        wifi=True,
         wifi_ip="192.168.4.1",
         wifi_port=4210,
         dry_run=True,
@@ -31,3 +30,24 @@ def test_make_link_uses_wifi_when_requested(monkeypatch):
         "verbose": True,
         "min_interval_s": 0.0,
     }
+
+
+def test_simulation_can_force_dry_run(monkeypatch):
+    captured = {}
+
+    class FakeWifiLink:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("trajectory.esp32_wifi_link.ESP32WifiLink", FakeWifiLink)
+    args = SimpleNamespace(
+        wifi_ip="192.168.4.1",
+        wifi_port=4210,
+        dry_run=False,
+        verbose=False,
+        realtime=False,
+    )
+
+    main.make_link(args, force_dry_run=True)
+
+    assert captured["dry_run"] is True
