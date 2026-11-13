@@ -230,7 +230,7 @@ def test_logger_roundtrip(tmp_path):
     assert len(load_pairs(path)[0]) == 0   # true landing not filled in yet
 
 
-# ------------------------------------------------------------------ serial / wifi
+# ---------------------------------------------------------------- skid-steer wifi
 def test_wifi_link_dry_run_and_parity():
     link = ESP32WifiLink(dry_run=True, min_interval_s=0.05)
     assert link.send_target(0.123456, -0.5)
