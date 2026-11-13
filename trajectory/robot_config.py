@@ -1,4 +1,4 @@
-"""One settings file for the real rig (phones, serial port, geometry, calibration files).
+"""One settings file for USB phone cameras, skid-steer Wi-Fi, geometry, and calibration files.
 
 Edit config/robot.json once; `python main.py --live` then needs no other flags.
 Command-line flags still override anything in the file.
@@ -14,8 +14,8 @@ DEFAULT_PATH = "config/robot.json"
 @dataclass
 class RobotSettings:
     # --- cameras (phones: stream URLs; USB: integer indexes as strings) ---
-    left: str = "http://PHONE1_IP:8080/video"
-    right: str = "http://PHONE2_IP:8080/video"
+    left: str = "0"
+    right: str = "1"
     swap: bool = False                 # set true if "left" is actually the right-hand camera
     fps: int = 60
     width: int = 640                   # 640x480 is the sweet spot: ~8 ms/frame-pair on a laptop CPU
@@ -23,10 +23,10 @@ class RobotSettings:
     right_offset_ms: float = 0.0       # from `python -m vision.sync_tool`
     latency_s: float = 0.12            # from `python -m vision.latency_test` (camera->decision)
     # --- robot ---
-    wifi: bool = False                 # true = use WiFi UDP link (TrashBot AP); false = serial
+    wifi: bool = True                  # selected skid-steer firmware uses WiFi UDP (TrashBot AP)
     wifi_ip: str = "192.168.4.1"       # default ESP32 AP IP address
     wifi_port: int = 4210              # default ESP32 UDP port
-    serial_port: Optional[str] = None  # e.g. "/dev/ttyUSB0" or "COM5"; null = auto-detect
+    serial_port: Optional[str] = None  # legacy serial fallback; not used by the selected skid-steer build
     home_x: float = 0.0                # robot rest position in world frame (m)
     home_y: float = 1.3
     # --- files produced during bring-up ---
