@@ -69,7 +69,7 @@ cameras ─► vision/StereoTracker ─► trajectory/TrajectoryEngine ─► ES
 ### 1. Run Unit Tests & Simulations
 ```bash
 pip install -r requirements.txt
-python -m pytest tests                      # 34 tests covering vision, trajectory & links
+python -m pytest tests                      # 35 tests covering vision, trajectory & links
 # The legacy C++ firmware harness is skipped until mecanum_locomotion.ino is restored.
 python demo_trajectory_plot.py              # 3D trajectory visualization plot
 python main.py --sim                        # dry-run simulation of synthetic throws
