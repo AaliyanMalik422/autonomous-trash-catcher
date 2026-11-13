@@ -24,7 +24,9 @@ def test_settings_roundtrip_and_validation(tmp_path):
     s.save(str(p))
     s2 = load_settings(str(p))
     assert s2.left.endswith("8080/video") and s2.fps == 60 and not s2.has_placeholder_sources()
-    assert RobotSettings().has_placeholder_sources()
+    defaults = RobotSettings()
+    assert (defaults.left, defaults.right) == ("0", "1")
+    assert not defaults.has_placeholder_sources()
     p.write_text('{"typo_key": 1}')
     with pytest.raises(ValueError):
         load_settings(str(p))
