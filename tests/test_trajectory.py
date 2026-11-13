@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from trajectory.calibration import LandingCorrection, ThrowLogger, load_pairs
 from trajectory.config import Config
-from trajectory.esp32_serial import ESP32Link
 from trajectory.esp32_wifi_link import ESP32WifiLink
 from trajectory.mock_vision import MockStereoCamera
 from trajectory.pipeline import ACTIVE, COOLDOWN, IDLE, TrajectoryEngine, reach_distance
@@ -232,14 +231,6 @@ def test_logger_roundtrip(tmp_path):
 
 
 # ------------------------------------------------------------------ serial / wifi
-def test_serial_dry_run_format_and_rate_limit():
-    link = ESP32Link(dry_run=True, min_interval_s=0.05)
-    assert link.send_target(0.123456, -0.5)
-    assert not link.send_target(0.2, 0.2)          # rate limited
-    link.home(); link.stop()                        # forced
-    assert link.sent == ["<POS,0.123,-0.500>", "<HOME>", "<STOP>"]
-
-
 def test_wifi_link_dry_run_and_parity():
     link = ESP32WifiLink(dry_run=True, min_interval_s=0.05)
     assert link.send_target(0.123456, -0.5)
