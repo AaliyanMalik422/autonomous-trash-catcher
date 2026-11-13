@@ -1,6 +1,6 @@
 {
-  "left": "http://PHONE1_IP:8080/video",
-  "right": "http://PHONE2_IP:8080/video",
+  "left": "0",
+  "right": "1",
   "swap": false,
   "fps": 60,
   "width": 640,
@@ -13,7 +13,7 @@
   "calib": "stereo_calib.npz",
   "rig": "rig.json",
   "correction": "calibration.json",
-  "wifi": false,
+  "wifi": true,
   "wifi_ip": "192.168.4.1",
   "wifi_port": 4210
 }
