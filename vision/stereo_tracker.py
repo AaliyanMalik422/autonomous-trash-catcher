@@ -91,7 +91,7 @@ class DetectorConfig:
     history: int = 300
     var_threshold: float = 28.0
     min_area: float = 60.0         # px; below is sensor noise
-    max_area: float = 2500.0       # px; above is a person / large object (matches FilterConfig)
+    max_area: float = 15000.0      # px; aligned with trajectory FilterConfig
     max_row_diff_px: float = 6.0   # epipolar tolerance after rectification
     min_disparity_px: float = 2.0
     max_depth_m: float = 8.0
