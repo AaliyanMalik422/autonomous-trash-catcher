@@ -203,46 +203,24 @@ python demo_trajectory_plot.py
 - **Module 3:** deferred and excluded from the current scope.
 
 
-## Single-camera YOLO detection check
+## Live object detection and throw tracking
 
-Use this detector to verify object recognition independently of stereo calibration and robot control. Connect the DroidCam first, then run:
+The live stereo system defaults to **OpenCV motion detection** (`--detector blob`). This is intentional: interception requires tracking the position of a moving object regardless of whether it is paper, plastic, a ball or another item. The trajectory filter checks whether the resulting 3D motion is consistent with a throw. Semantic classification is not required.
 
-```bash
-python -m pip install -r requirements.txt -r requirements-vision.txt
-python -m vision.trash_detection --source 2
-```
-
-The first run downloads the pretrained `yolo11n.pt` weights if they are not already available. Use `--source 0` (or another OpenCV index) for a different camera, or pass a video/stream URL. Press `p` to print the current frame's labels, confidence scores, bounding boxes and pixel centres; press `q` to exit.
-
-The pretrained COCO model can recognise classes such as `sports ball`, `bottle` and `cup`. It does **not** have a dedicated `paper ball` or general `trash` class. A crumpled paper ball requires a waste-specific dataset and a fine-tuned model; the detector's `--model` option accepts those weights once trained. This preview is detection-only: it does not track object identity, estimate a trajectory, or send commands to the robot.
-
-Run the lightweight unit tests without downloading YOLO weights:
-
-```bash
-python -m pytest -q tests/test_yolo_detection.py
-```
-
-
-## Open-vocabulary trash detection
-
-Live stereo mode uses the pretrained YOLOE-26n segmentation model by default. Its prompt vocabulary covers `ball`, `crumpled paper ball`, `plastic bottle`, `drink can`, `disposable cup`, `plastic wrapper`, `plastic bag`, `cardboard carton`, and `piece of rubbish`. Segmentation masks provide centroids and image areas; the stereo tracker matches candidates by semantic family, epipolar row and disparity before 3D triangulation.
-
-Install the optional detector runtime:
-
-```bash
-python -m pip install -r requirements.txt -r requirements-vision.txt
-```
-
-One-camera detection preview (DroidCam index 2):
+Single-camera preview (DroidCam index 2):
 
 ```bash
 python -m vision.trash_detection --source 2
 ```
 
-Live stereo perception and trajectory pipeline in safe dry-run mode:
+Keep the camera still during the one-second background warm-up, then move or throw an object through the field of view. The preview displays a motion candidate's centre and approximate size. It does not connect to or command the robot.
+
+YOLOE remains available as an optional class-aware experiment:
 
 ```bash
-python main.py --live --dry-run --show
+python -m vision.trash_detection --source 2 --backend yoloe
 ```
 
-The first run downloads the YOLOE checkpoint. Open-vocabulary prompts are not a guarantee of perfect recall: detection of paper balls, thin wrappers and transparent objects depends on their appearance, resolution, lighting and motion blur. Validate those cases in the intended capture zone before physical interception. The one-camera preview never sends robot commands. Live stereo requires a valid stereo calibration and rig geometry.
+YOLOE requires its optional runtime and model files. CPU inference may be too slow for fast throws; it is not the default. Live stereo can explicitly select it with `--detector yoloe`. The default `blob` path does not load PyTorch or YOLOE weights.
+
+Live stereo still requires a rigid two-camera mount, valid stereo calibration, and measured rig geometry. Real-world depth and throw-prediction accuracy must be validated before autonomous robot movement.
