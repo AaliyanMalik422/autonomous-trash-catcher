@@ -24,7 +24,7 @@ class ZoneConfig:
 @dataclass
 class FilterConfig:
     min_area: float = 100.0        # px, reject dust
-    max_area: float = 2500.0       # px, reject people
+    max_area: float = 15000.0       # px, reject people
     min_height_z: float = 0.30     # m, must be airborne
     max_gap_s: float = 0.20        # no valid detection for this long -> drop track
     max_jump_m: float = 0.60       # per-frame jump beyond this -> outlier point
