@@ -264,8 +264,8 @@ def main():
     ap.add_argument("--config", help=f"settings file (default {DEFAULT_PATH})")
     ap.add_argument("--home-x", type=float, help="robot home X in world frame (m)")
     ap.add_argument("--home-y", type=float, help="robot home Y in world frame (m)")
-    ap.add_argument("--detector", choices=("yoloe", "blob"), default="yoloe",
-                    help="live detector backend (default: open-vocabulary YOLOE)")
+    ap.add_argument("--detector", choices=("yoloe", "blob"), default="blob",
+                    help="live detector backend (default: fast class-agnostic motion tracking)")
     ap.add_argument("--yolo-model", default="yoloe-26n-seg.pt")
     ap.add_argument("--yolo-confidence", type=float, default=0.18)
     ap.add_argument("--yolo-device", default="cpu")
