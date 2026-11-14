@@ -33,7 +33,7 @@ The current chassis is **skid-steer**, not an omni-wheel. It cannot strafe sidew
 - `trajectory/pipeline.py`: state machine that turns a valid prediction into target/home commands.
 - `trajectory/calibration.py`: logs throws and fits an empirical landing correction from measured prediction errors.
 
-No pretrained object detector is required by the current design; detection and trajectory logic are implemented with OpenCV and the project's own physics pipeline.
+The current stereo-tracking pipeline still uses OpenCV foreground/blob detection. An optional single-camera YOLO detector is available for object-recognition bring-up; it is not yet wired into stereo tracking or trajectory prediction.
 
 ## Module 2 — Skid-Steer Locomotion & Interception (ESP32)
 
@@ -201,3 +201,23 @@ python demo_trajectory_plot.py
 - **Module 1:** vision and trajectory code, synthetic tests, phone-camera capture support, and stereo calibration tools are present. Real USB phone compatibility, stereo calibration quality, and real-throw prediction accuracy still need to be measured on the team's physical setup.
 - **Module 2:** skid-steer firmware and the laptop UDP client are present. The remote joystick has been tested by the team. The next validation target is the laptop-to-ESP32 UDP connection, followed by calibrated autonomous target movement.
 - **Module 3:** deferred and excluded from the current scope.
+
+
+## Single-camera YOLO detection check
+
+Use this detector to verify object recognition independently of stereo calibration and robot control. Connect the DroidCam first, then run:
+
+```bash
+python -m pip install -r requirements.txt -r requirements-vision.txt
+python -m vision.trash_detection --source 2
+```
+
+The first run downloads the pretrained `yolo11n.pt` weights if they are not already available. Use `--source 0` (or another OpenCV index) for a different camera, or pass a video/stream URL. Press `p` to print the current frame's labels, confidence scores, bounding boxes and pixel centres; press `q` to exit.
+
+The pretrained COCO model can recognise classes such as `sports ball`, `bottle` and `cup`. It does **not** have a dedicated `paper ball` or general `trash` class. A crumpled paper ball requires a waste-specific dataset and a fine-tuned model; the detector's `--model` option accepts those weights once trained. This preview is detection-only: it does not track object identity, estimate a trajectory, or send commands to the robot.
+
+Run the lightweight unit tests without downloading YOLO weights:
+
+```bash
+python -m pytest -q tests/test_yolo_detection.py
+```
