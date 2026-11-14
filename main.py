@@ -187,7 +187,10 @@ def mode_live(a):
         print(f"[warn] {a.rig} not found: using default rig geometry (height 1.0 m, no tilt) - 3D heights will be wrong")
         rig = RigGeometry()
     print(f"[init] cameras {a.left} | {a.right}  {a.fps} fps  offset {a.right_offset_ms} ms  latency {a.latency_s} s")
-    tracker = StereoTracker(calib, rig)
+    tracker = StereoTracker(
+        calib, rig, detector_backend=a.detector, yolo_model=a.yolo_model,
+        yolo_confidence=a.yolo_confidence, yolo_device=a.yolo_device,
+    )
     eng = build_engine(a)
     rec = Recorder() if a.record else None
     cams = StereoCameras(a.left, a.right, calib.image_size[0], calib.image_size[1], a.fps, a.swap,
@@ -261,6 +264,11 @@ def main():
     ap.add_argument("--config", help=f"settings file (default {DEFAULT_PATH})")
     ap.add_argument("--home-x", type=float, help="robot home X in world frame (m)")
     ap.add_argument("--home-y", type=float, help="robot home Y in world frame (m)")
+    ap.add_argument("--detector", choices=("yoloe", "blob"), default="yoloe",
+                    help="live detector backend (default: open-vocabulary YOLOE)")
+    ap.add_argument("--yolo-model", default="yoloe-26n-seg.pt")
+    ap.add_argument("--yolo-confidence", type=float, default=0.18)
+    ap.add_argument("--yolo-device", default="cpu")
     ap.add_argument("--show", action="store_true")
     ap.add_argument("--record", action="store_true", help="save raw packets of each throw to logs/")
     ap.add_argument("--log-throws", action="store_true")
