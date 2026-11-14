@@ -207,13 +207,13 @@ python demo_trajectory_plot.py
 
 The live stereo system defaults to **OpenCV motion detection** (`--detector blob`). This is intentional: interception requires tracking the position of a moving object regardless of whether it is paper, plastic, a ball or another item. The trajectory filter checks whether the resulting 3D motion is consistent with a throw. Semantic classification is not required.
 
-Single-camera preview (DroidCam index 2):
+Single-camera detection, tracking and demo recording (DroidCam index 2):
 
 ```bash
-python -m vision.trash_detection --source 2
+python -m vision.trash_detection --source 2 --record
 ```
 
-Keep the camera still during the one-second background warm-up, then move or throw an object through the field of view. The preview displays a motion candidate's centre and approximate size. It does not connect to or command the robot.
+Keep the camera still during the one-second background warm-up, then move or throw an object through the field of view. The preview marks the detected object's centre, draws its recent image-plane path, and reports image-plane speed and detection count. Press `p` to print a statistics snapshot, then `q` to finish. The annotated MP4 is saved to `logs/single_camera_demo.mp4` for the prototype demonstration. This mode does not connect to or command the robot and does not claim stereo depth or 3D landing prediction.
 
 YOLOE remains available as an optional class-aware experiment:
 
