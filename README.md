@@ -221,3 +221,28 @@ Run the lightweight unit tests without downloading YOLO weights:
 ```bash
 python -m pytest -q tests/test_yolo_detection.py
 ```
+
+
+## Open-vocabulary trash detection
+
+Live stereo mode uses the pretrained YOLOE-26n segmentation model by default. Its prompt vocabulary covers `ball`, `crumpled paper ball`, `plastic bottle`, `drink can`, `disposable cup`, `plastic wrapper`, `plastic bag`, `cardboard carton`, and `piece of rubbish`. Segmentation masks provide centroids and image areas; the stereo tracker matches candidates by semantic family, epipolar row and disparity before 3D triangulation.
+
+Install the optional detector runtime:
+
+```bash
+python -m pip install -r requirements.txt -r requirements-vision.txt
+```
+
+One-camera detection preview (DroidCam index 2):
+
+```bash
+python -m vision.trash_detection --source 2
+```
+
+Live stereo perception and trajectory pipeline in safe dry-run mode:
+
+```bash
+python main.py --live --dry-run --show
+```
+
+The first run downloads the YOLOE checkpoint. Open-vocabulary prompts are not a guarantee of perfect recall: detection of paper balls, thin wrappers and transparent objects depends on their appearance, resolution, lighting and motion blur. Validate those cases in the intended capture zone before physical interception. The one-camera preview never sends robot commands. Live stereo requires a valid stereo calibration and rig geometry.
