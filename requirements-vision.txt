@@ -1,3 +1,2 @@
-# Optional dependencies for the single-camera YOLO detector.
-# Kept separate from requirements.txt so CPU-only simulation/CI does not install PyTorch.
-ultralytics>=8.3,<9
+# YOLOE-26 requires Ultralytics >= 8.4.0.
+ultralytics>=8.4.0,<9.0.0
