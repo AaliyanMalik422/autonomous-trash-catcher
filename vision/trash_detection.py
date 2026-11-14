@@ -117,9 +117,11 @@ def main():
                             0.48, (255, 255, 0), 1, cv2.LINE_AA)
             else:
                 lost_frames += 1
+                if lost_frames == 9:
+                    trace.clear()
+                    recent.clear()
                 if lost_frames > 8:
                     last_center = None
-                    recent.clear()
 
             # The trace is deliberately labelled image-plane motion, not 3D trajectory.
             if len(trace) > 1:
