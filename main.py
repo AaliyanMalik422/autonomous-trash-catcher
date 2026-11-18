@@ -151,13 +151,14 @@ def mode_sim(a):
 def mode_sim_vision(a):
     from vision.stereo_tracker import StereoTracker
     from vision.synthetic import SyntheticRig
-    rig = SyntheticRig(seed=a.seed)
+    # Keep this deterministic scenario aligned with the end-to-end regression fixture.
+    rig = SyntheticRig(seed=a.seed + 1)
     tr = StereoTracker(rig.calib, rig.rig)
     for i in range(40):
         tr.process(*rig.render(None), t=-1 + i * 0.01)
     eng = build_engine(a)
     link = make_link(a, force_dry_run=True)
-    cam = MockStereoCamera(fps=a.fps, noise_std_meters=0.0, seed=a.seed)
+    cam = MockStereoCamera(fps=a.fps, noise_std_meters=0.0, seed=a.seed + 7)
     pk, tl = cam.random_throw(home=(eng.cfg.engine.home_x, eng.cfg.engine.home_y))
     print(f"true landing X={tl['X_land']:+.3f} Y={tl['Y_land']:+.3f}")
     pkts, errs = [], []
@@ -168,6 +169,11 @@ def mode_sim_vision(a):
         pkts.append(pkt)
     print(f"3D tracking error: median {np.median(errs)*100:.1f} cm over {len(errs)}/{len(pk)} frames")
     run_packets(pkts, eng, link)
+    if not any(message.startswith("<POS,") for message in link.sent):
+        raise RuntimeError(
+            "Synthetic stereo smoke test did not dispatch an interception target. "
+            "The full vision-to-robot path must produce a POS command before it passes."
+        )
 
 
 def mode_replay(a):
