@@ -103,12 +103,19 @@ class TrajectoryPredictor:
         if len(points) < max(3, cfg.min_points):
             return None
         g = self.g
-        t_abs = np.array([p["timestamp"] for p in points], dtype=float)
-        x = np.array([p["X"] for p in points], dtype=float)
-        y = np.array([p["Y"] for p in points], dtype=float)
-        z = np.array([p["Z"] for p in points], dtype=float)
+        try:
+            t_abs = np.array([p["timestamp"] for p in points], dtype=float)
+            x = np.array([p["X"] for p in points], dtype=float)
+            y = np.array([p["Y"] for p in points], dtype=float)
+            z = np.array([p["Z"] for p in points], dtype=float)
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return None
+        if not all(np.all(np.isfinite(a)) for a in (t_abs, x, y, z)):
+            return None
         order = np.argsort(t_abs)
         t_abs, x, y, z = t_abs[order], x[order], y[order], z[order]
+        if np.any(np.diff(t_abs) <= 0):
+            return None
         n_total = len(t_abs)
 
         keep = np.ones(n_total, dtype=bool)
