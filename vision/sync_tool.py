@@ -22,6 +22,16 @@ def estimate_offset(t_l, s_l, t_r, s_r, max_lag_s=0.5, grid_hz=1000.0):
     t_*: sample times, s_*: activity signals (e.g. motion energy per frame).
     """
     t_l, s_l, t_r, s_r = map(lambda a: np.asarray(a, dtype=float), (t_l, s_l, t_r, s_r))
+    if any(a.ndim != 1 for a in (t_l, s_l, t_r, s_r)):
+        raise ValueError("Camera timestamps and motion signals must be one-dimensional")
+    if len(t_l) < 3 or len(t_r) < 3 or len(t_l) != len(s_l) or len(t_r) != len(s_r):
+        raise ValueError("Each camera needs at least three timestamp/signal samples")
+    if not all(np.all(np.isfinite(a)) for a in (t_l, s_l, t_r, s_r)):
+        raise ValueError("Camera synchronization samples must be finite")
+    if np.any(np.diff(t_l) <= 0) or np.any(np.diff(t_r) <= 0):
+        raise ValueError("Camera timestamps must be strictly increasing")
+    if not np.isfinite(max_lag_s) or max_lag_s <= 0 or not np.isfinite(grid_hz) or grid_hz <= 0:
+        raise ValueError("max_lag_s and grid_hz must be positive finite values")
     lo = max(t_l[0], t_r[0]) + max_lag_s
     hi = min(t_l[-1], t_r[-1]) - max_lag_s
     if hi - lo < 1.0:
@@ -84,7 +94,12 @@ def main():
     a = ap.parse_args()
     (tl, sl), (tr, sr) = record(a.left, a.right, a.seconds, a.fps)
     off, score = estimate_offset(tl, sl, tr, sr)
-    print(f"offset = {off*1000:+.1f} ms   (match score {score:.2f}; want > 0.5, otherwise redo with sharper motions)")
+    if score < 0.5:
+        raise SystemExit(
+            f"Camera synchronization match score is only {score:.2f}; "
+            "no offset was recommended. Repeat with sharper, repeated motion visible in both cameras."
+        )
+    print(f"offset = {off*1000:+.1f} ms   (match score {score:.2f})")
     print(f"use:  python main.py --live ... --right-offset-ms {off*1000:.1f}")
 
 
