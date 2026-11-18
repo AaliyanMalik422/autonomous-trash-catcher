@@ -26,8 +26,14 @@ def open_capture(source: Source, width=640, height=480, fps=30, fourcc="MJPG"):
     if isinstance(source, str):
         try:
             cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG,
-                                   [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2500])
+                                   [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000,
+                                    cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2500])
         except Exception:
+            cap = cv2.VideoCapture()
+        # Some phone-stream backends (and OpenCV builds) do not expose FFmpeg.
+        # Retry with OpenCV's normal backend rather than leaving a valid URL unusable.
+        if not cap.isOpened():
+            cap.release()
             cap = cv2.VideoCapture(source)
     else:
         cap = cv2.VideoCapture(source, cv2.CAP_ANY)
@@ -165,7 +171,11 @@ class StereoCameras:
         self.max_skew_s = max_skew_s if max_skew_s is not None else 0.6 / max(fps, 1)
         caps = captures or (None, None)
         self.L = _Source(left, width, height, fps, fourcc, caps[0])
-        self.R = _Source(right, width, height, fps, fourcc, caps[1])
+        try:
+            self.R = _Source(right, width, height, fps, fourcc, caps[1])
+        except Exception:
+            self.L.release()
+            raise
         self.skew_log = collections.deque(maxlen=200)
         self.last_times = (0.0, 0.0)   # (left, right+offset) capture times of the last pair returned
 
