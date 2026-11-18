@@ -111,8 +111,9 @@ class RigGeometry:
     Stereo points are relative to the left lens, not the rig midpoint. The world
     frame is robot-relative: +X right, +Y forward, +Z up. yaw_deg is the camera
     rig's heading offset from robot +Y; positive yaw points the optical axis
-    toward robot +X. Keep the mount level (no camera roll) and measure the
-    lens offsets from the robot's odometry ZERO origin.
+    toward robot +X. Keep the mount level (no camera roll). Camera offsets and
+    engine home coordinates must use the same robot-aligned world frame; the
+    engine home point is the robot's odometry ZERO location in that frame.
     """
     cam_height_m: float = 1.0      # left lens height above the floor
     pitch_deg: float = 0.0         # downward tilt of the optical axis (positive = looking down)
