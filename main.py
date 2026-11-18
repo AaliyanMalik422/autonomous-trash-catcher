@@ -159,10 +159,10 @@ def mode_sim_vision(a):
     eng = build_engine(a)
     link = make_link(a, force_dry_run=True)
     cam = MockStereoCamera(fps=a.fps, noise_std_meters=0.0, seed=a.seed + 7)
-    # Deliberately use a long, near-straight flight so this smoke test exercises
-    # a physically reachable target rather than testing the safety rejection path.
+    # Use a representative, near-straight flight that is trackable and reachable
+    # from the configured robot home, so this checks the positive command path.
     pk, tl = cam.generate_throw(
-        start_pos=(0.2, 3.5, 1.8), velocity=(-0.18, -2.0, 4.0)
+        start_pos=(0.2, 2.6, 1.3), velocity=(-0.28, -1.8, 2.2)
     )
     print(f"true landing X={tl['X_land']:+.3f} Y={tl['Y_land']:+.3f}")
     pkts, errs = [], []
