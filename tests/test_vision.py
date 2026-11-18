@@ -214,3 +214,23 @@ def test_stereo_calibration_rejects_non_rotation_r1():
     with pytest.raises(ValueError, match="orthonormal"):
         StereoCalibration(image_size=cal.image_size, P1=cal.P1, P2=cal.P2,
                           R1=np.zeros((3, 3)))
+
+
+def test_camera_sync_estimator_rejects_invalid_samples():
+    from vision.sync_tool import estimate_offset
+    with pytest.raises(ValueError, match="at least three"):
+        estimate_offset([], [], [], [])
+    t = np.linspace(0.0, 4.0, 401)
+    signal = np.sin(2.1 * t) + 0.35 * np.sin(4.7 * t + 0.2)
+    with pytest.raises(ValueError, match="strictly increasing"):
+        estimate_offset([0.0, 1.0, 0.5], [0.0, 1.0, 0.0],
+                        [0.0, 1.0, 2.0], [0.0, 1.0, 0.0])
+
+
+def test_camera_sync_estimator_returns_strong_score_for_matching_signals():
+    from vision.sync_tool import estimate_offset
+    t = np.linspace(0.0, 8.0, 801)
+    signal = np.sin(1.7 * t) + 0.4 * np.sin(3.1 * t + 0.3) + 0.15 * np.sin(6.3 * t)
+    offset, score = estimate_offset(t, signal, t, signal)
+    assert abs(offset) < 0.005
+    assert score > 0.9
