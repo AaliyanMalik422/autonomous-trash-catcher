@@ -56,38 +56,71 @@ def capture(a):
 
 
 def solve(a):
+    if a.cols < 2 or a.rows < 2 or not np.isfinite(a.square) or a.square <= 0:
+        raise SystemExit("Checkerboard dimensions must be >= 2 and --square must be a positive metre value.")
     pattern = (a.cols, a.rows)
     objp = np.zeros((a.cols * a.rows, 3), np.float32)
     objp[:, :2] = np.mgrid[0:a.cols, 0:a.rows].T.reshape(-1, 2) * a.square
-    lf = sorted(glob.glob(os.path.join(a.images, "left_*.png")))
-    rf = sorted(glob.glob(os.path.join(a.images, "right_*.png")))
+
+    # Match by the numeric suffix (00, 01, ...) instead of zip(sorted(...)):
+    # a missing image must never shift every subsequent left/right pairing.
+    lf = {os.path.basename(f)[5:]: f for f in glob.glob(os.path.join(a.images, "left_*.png"))}
+    rf = {os.path.basename(f)[6:]: f for f in glob.glob(os.path.join(a.images, "right_*.png"))}
+    keys = sorted(set(lf) & set(rf))
+    if not keys:
+        raise SystemExit(f"No matching left_NN.png/right_NN.png pairs found in {a.images!r}")
+    if len(lf) != len(rf) or set(lf) != set(rf):
+        print(f"WARNING: unmatched images ignored (left={len(lf)}, right={len(rf)}, matched={len(keys)})")
+
     obj, pl, pr, size = [], [], [], None
     crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 1e-4)
-    for fl, fr in zip(lf, rf):
-        L = cv2.imread(fl, cv2.IMREAD_GRAYSCALE)
-        R = cv2.imread(fr, cv2.IMREAD_GRAYSCALE)
-        size = L.shape[::-1]
+    for key in keys:
+        L = cv2.imread(lf[key], cv2.IMREAD_GRAYSCALE)
+        R = cv2.imread(rf[key], cv2.IMREAD_GRAYSCALE)
+        if L is None or R is None:
+            print(f"WARNING: unreadable pair {key}; skipped")
+            continue
+        if L.shape != R.shape:
+            raise SystemExit(f"Pair {key} has different left/right image sizes: {L.shape[::-1]} vs {R.shape[::-1]}")
+        pair_size = L.shape[::-1]
+        if size is None:
+            size = pair_size
+        elif pair_size != size:
+            raise SystemExit(f"Image resolution changed: expected {size}, got {pair_size} in pair {key}")
+
         okl, cl = cv2.findChessboardCorners(L, pattern)
         okr, cr = cv2.findChessboardCorners(R, pattern)
         if okl and okr:
-            obj.append(objp)
+            obj.append(objp.copy())
             pl.append(cv2.cornerSubPix(L, cl, (11, 11), (-1, -1), crit))
             pr.append(cv2.cornerSubPix(R, cr, (11, 11), (-1, -1), crit))
+
     if len(obj) < 10:
         raise SystemExit(f"Only {len(obj)} usable pairs; need >= 10 (20-30 recommended)")
-    _, K1, D1, _, _ = cv2.calibrateCamera(obj, pl, size, None, None)[:5]
-    _, K2, D2, _, _ = cv2.calibrateCamera(obj, pr, size, None, None)[:5]
+    rms, K1, D1, _, _ = cv2.calibrateCamera(obj, pl, size, None, None)
+    rms2, K2, D2, _, _ = cv2.calibrateCamera(obj, pr, size, None, None)
     rms, K1, D1, K2, D2, R, T, _, _ = cv2.stereoCalibrate(
         obj, pl, pr, K1, D1, K2, D2, size, flags=cv2.CALIB_FIX_INTRINSIC, criteria=crit)
     R1, R2, P1, P2, Q, _, _ = cv2.stereoRectify(K1, D1, K2, D2, size, R, T, alpha=0)
+
+    signed_baseline = -float(P2[0, 3] / P2[0, 0])
+    if not np.isfinite(signed_baseline) or signed_baseline <= 0:
+        raise SystemExit(
+            f"Stereo baseline has the wrong sign ({signed_baseline:.4f} m). "
+            "Check physical left/right camera order; swap the two sources and recapture if needed."
+        )
+
     m1 = cv2.initUndistortRectifyMap(K1, D1, R1, P1, size, cv2.CV_16SC2)
     m2 = cv2.initUndistortRectifyMap(K2, D2, R2, P2, size, cv2.CV_16SC2)
-    cal = StereoCalibration(size, P1, P2, m1, m2)
+    cal = StereoCalibration(size, P1, P2, m1, m2, R1)
     cal.save(a.out)
-    print(f"{len(obj)} pairs | stereo RMS {rms:.3f} px | baseline {cal.baseline*100:.1f} cm | "
-          f"focal {cal.focal:.0f} px -> saved {a.out}")
+    print(f"{len(obj)} pairs | stereo RMS {rms:.3f} px | "
+          f"left/right intrinsic RMS {rms2:.3f} px / {rms2:.3f} px | "
+          f"baseline {cal.baseline*100:.1f} cm | focal {cal.focal:.0f} px -> saved {a.out}")
     if rms > 1.0:
-        print("WARNING: RMS > 1 px. Retake pairs: board flatter, sharper, more pose variety.")
+        print("WARNING: RMS > 1 px. Retake pairs: board sharp, flat, and spread across the image.")
+    elif rms > 0.6:
+        print("NOTE: RMS is above the preferred 0.6 px target; validate depth at known distances.")
 
 
 if __name__ == "__main__":
