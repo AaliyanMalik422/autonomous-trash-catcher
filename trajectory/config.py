@@ -68,6 +68,9 @@ class EngineConfig:
     # robot dynamics for the reachability estimate
     max_accel: float = 3.6         # m/s^2; conservative firmware braking acceleration (0.6 * MAX_LIN_DECEL)
     max_speed: float = 0.9         # m/s; firmware POS_MAX_V for autonomous position moves
+    max_turn_rate: float = 2.0    # rad/s; conservative vs firmware POS_MAX_W=3.0
+    max_turn_accel: float = 10.0  # rad/s^2; conservative vs firmware MAX_ANG_ACCEL=20.0
+    turn_time_margin: float = 1.25
 
 
 @dataclass
