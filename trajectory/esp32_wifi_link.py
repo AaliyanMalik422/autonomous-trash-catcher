@@ -12,6 +12,7 @@ The cameras use USB, so the computer does not need any other network.
 Run this file directly for a short test (THE CAR WILL MOVE 30 cm, wheels free or clear floor):
     python esp32_wifi_link.py
 """
+import math
 import socket
 import threading
 import time
@@ -76,6 +77,9 @@ class ESP32WifiLink:
         return self._send("<STOP>\n", force=True)
 
     def pos(self, x: float, y: float) -> bool:
+        x, y = float(x), float(y)
+        if not math.isfinite(x) or not math.isfinite(y):
+            raise ValueError("POS coordinates must be finite numbers")
         return self._send(f"<POS,{x:.3f},{y:.3f}>\n")
 
     def send_target(self, x: float, y: float) -> bool:
@@ -83,6 +87,9 @@ class ESP32WifiLink:
         return self.pos(x, y)
 
     def vel(self, vx: float, vy: float, w: float) -> bool:
+        vx, vy, w = float(vx), float(vy), float(w)
+        if not all(math.isfinite(v) for v in (vx, vy, w)):
+            raise ValueError("VEL components must be finite numbers")
         return self._send(f"<VEL,{vx:.3f},{vy:.3f},{w:.3f}>\n")
 
     # ------------------------------------------------------------- receive
