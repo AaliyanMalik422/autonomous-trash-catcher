@@ -211,11 +211,15 @@ def mode_live(a):
         raise SystemExit(f"No stereo calibration at {a.calib}. Run: python -m vision.calibrate_stereo capture / solve "
                          "(see README, phone bring-up step 3).")
     calib = StereoCalibration.load(a.calib)
-    if a.rig and os.path.exists(a.rig):
+    if not a.rig or not os.path.isfile(a.rig):
+        raise SystemExit(
+            f"No measured camera rig geometry at {a.rig!r}. Create the rig JSON with "
+            "cam_height_m, pitch_deg, yaw_deg, cam_x_m, and cam_y_m before starting live mode."
+        )
+    try:
         rig = RigGeometry.load(a.rig)
-    else:
-        print(f"[warn] {a.rig} not found: using default rig geometry (height 1.0 m, no tilt) - 3D heights will be wrong")
-        rig = RigGeometry()
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Invalid camera rig geometry in {a.rig}: {exc}") from exc
     print(f"[init] cameras {a.left} | {a.right}  {a.fps} fps  offset {a.right_offset_ms} ms  latency {a.latency_s} s")
     tracker = StereoTracker(
         calib, rig, detector_backend=a.detector, yolo_model=a.yolo_model,
@@ -292,7 +296,7 @@ def main():
     ap.add_argument("--wifi-port", type=int, help="skid-steer UDP port (default 4210)")
     ap.add_argument("--dry-run", action="store_true", help="print commands instead of sending")
     ap.add_argument("--calib")
-    ap.add_argument("--rig", help="JSON with cam_height_m, pitch_deg, cam_x_m, cam_y_m")
+    ap.add_argument("--rig", help="required measured JSON: cam_height_m, pitch_deg, yaw_deg, cam_x_m, cam_y_m")
     ap.add_argument("--correction", help="calibration.json from trajectory.calibration fit")
     ap.add_argument("--left", help="USB index or phone stream URL (http://ip:port/video)")
     ap.add_argument("--right", help="USB index or phone stream URL")
