@@ -79,11 +79,18 @@ def dispatch(cmd, link, verbose=True):
     if cmd is None:
         return
     if cmd.kind == "target":
+        # Never dispatch a clipped or physically unreachable interception target.
+        # A clamped coordinate is not the predicted landing point.
+        if cmd.clamped or not cmd.reachable:
+            link.stop()
+            if verbose:
+                reason = "outside configured reach area" if cmd.clamped else "insufficient time to reach"
+                print(f"[safety] target rejected ({reason}); STOP sent")
+            return
         link.send_target(cmd.x, cmd.y)
         if verbose:
-            flag = "" if cmd.reachable else "  [!] may be out of reach in time"
             print(f"[cmd] target x={cmd.x:+.3f} y={cmd.y:+.3f} ttl={cmd.ttl:.2f}s "
-                  f"sigma={cmd.sigma*100:.1f}cm{flag}")
+                  f"sigma={cmd.sigma*100:.1f}cm")
     elif cmd.kind == "home":
         link.home()
         if verbose:
