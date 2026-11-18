@@ -210,11 +210,7 @@ def test_rig_geometry_rejects_invalid_pose():
 
 
 def test_stereo_calibration_rejects_non_rotation_r1():
-    cal = SyntheticRig().calib
+    cal = StereoCalibration.ideal()
     with pytest.raises(ValueError, match="orthonormal"):
-        StereoCalibration(
-            K1=cal.K1, D1=cal.D1, K2=cal.K2, D2=cal.D2,
-            R=cal.R, T=cal.T, R1=np.zeros((3, 3)),
-            P1=cal.P1, P2=cal.P2, Q=cal.Q, image_size=cal.image_size,
-            map1x=cal.map1x, map1y=cal.map1y, map2x=cal.map2x, map2y=cal.map2y,
-        )
+        StereoCalibration(image_size=cal.image_size, P1=cal.P1, P2=cal.P2,
+                          R1=np.zeros((3, 3)))
