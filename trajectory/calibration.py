@@ -25,6 +25,8 @@ class LandingCorrection:
     def __init__(self, A=None, b=None):
         self.A = np.eye(2) if A is None else np.asarray(A, dtype=float).reshape(2, 2)
         self.b = np.zeros(2) if b is None else np.asarray(b, dtype=float).reshape(2)
+        if not np.all(np.isfinite(self.A)) or not np.all(np.isfinite(self.b)):
+            raise ValueError("Landing correction coefficients must be finite")
 
     @property
     def is_identity(self) -> bool:
