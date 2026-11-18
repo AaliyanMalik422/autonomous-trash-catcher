@@ -45,7 +45,7 @@ def reach_distance(ttl: float, max_accel: float, max_speed: float) -> float:
 
 
 def skid_steer_turn_time(x: float, y: float, max_turn_accel: float,
-                         max_turn_rate: float) -> float:
+                         max_turn_rate: float, drive_heading_tolerance_rad: float = 0.35) -> float:
     """Conservative rest-to-heading time before a skid-steer can drive to (x, y).
 
     Mirrors the ESP32 controller's choice to reverse when a target bearing is
@@ -60,6 +60,13 @@ def skid_steer_turn_time(x: float, y: float, max_turn_accel: float,
     angle = abs(math.atan2(-x, y))
     if angle > math.pi / 2:
         angle = math.pi - angle
+    if drive_heading_tolerance_rad < 0 or drive_heading_tolerance_rad >= math.pi / 2:
+        raise ValueError("drive_heading_tolerance_rad must be in [0, pi/2)")
+    # The firmware begins driving once heading error is within HEAD_DRIVE_RAD;
+    # only the remaining angle consumes turn-only time.
+    angle = max(0.0, angle - drive_heading_tolerance_rad)
+    if angle <= 1e-9:
+        return 0.0
     ramp_angle = max_turn_rate * max_turn_rate / max_turn_accel
     if angle <= ramp_angle:
         return 2.0 * (angle / max_turn_accel) ** 0.5
@@ -100,7 +107,9 @@ class TrajectoryEngine:
         cx, cy = self.correction.apply(pred.x, pred.y)
         rx, ry, clamped = self._to_robot_frame(cx, cy)
         dist = (rx * rx + ry * ry) ** 0.5
-        turn_time = skid_steer_turn_time(rx, ry, e.max_turn_accel, e.max_turn_rate)
+        turn_time = skid_steer_turn_time(
+            rx, ry, e.max_turn_accel, e.max_turn_rate, e.drive_heading_tolerance_rad
+        )
         available_drive_time = max(0.0, ttl_eff - e.turn_time_margin * turn_time)
         reachable = (not clamped) and dist <= reach_distance(
             available_drive_time, e.max_accel, e.max_speed
