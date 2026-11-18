@@ -49,20 +49,30 @@ class ThrowFilter:
     def process_frame(self, pkt: dict) -> Tuple[bool, list]:
         """Returns (is_valid_throw, buffer_of_accepted_points)."""
         c = self.cfg
-        t = pkt.get("timestamp", 0.0)
-        self._check_gap(t)
-
         if not pkt.get("detected", False):
+            t = pkt.get("timestamp", 0.0)
+            if isinstance(t, (int, float, np.number)) and np.isfinite(t):
+                self._check_gap(float(t))
             return self._reject("not detected")
 
-        area = pkt.get("blob_area", 0.0)
-        if pkt.get("detection_confidence", 1.0) < 0.18:
+        try:
+            t = float(pkt["timestamp"])
+            x, y, z = float(pkt["X"]), float(pkt["Y"]), float(pkt["Z"])
+            area = float(pkt.get("blob_area", 0.0))
+            confidence = float(pkt.get("detection_confidence", 1.0))
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return self._reject("invalid measurement fields")
+        if not np.all(np.isfinite([t, x, y, z, area, confidence])):
+            return self._reject("non-finite measurement")
+        self._check_gap(t)
+
+        if confidence < 0.18:
             return self._reject("low detector confidence")
         if not (c.min_area <= area <= c.max_area):
             return self._reject("blob size")
-        if pkt["Z"] < c.min_height_z:
+        if z < c.min_height_z:
             return self._reject("too low")
-        if not self._in_zone(pkt):
+        if not self._in_zone({"X": x, "Y": y}):
             return self._reject("outside zone")
 
         buf = self.trajectory_buffer
@@ -71,8 +81,8 @@ class ThrowFilter:
             dt = t - last["timestamp"]
             if dt <= 0:
                 return self._reject("non-monotonic time")
-            d = np.sqrt((pkt["X"] - last["X"]) ** 2 + (pkt["Y"] - last["Y"]) ** 2
-                        + (pkt["Z"] - last["Z"]) ** 2)
+            d = np.sqrt((x - last["X"]) ** 2 + (y - last["Y"]) ** 2
+                        + (z - last["Z"]) ** 2)
             if d > c.max_jump_m + c.max_speed * dt:
                 return self._reject("jump outlier")
 
