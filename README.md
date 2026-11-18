@@ -60,7 +60,7 @@ The chassis is skid-steer. It turns by driving its left and right sides at diffe
 
 ## Software requirements
 
-- Python 3.11 (the automated test workflow uses Python 3.11).
+- Python 3.11 or 3.14 (both versions are covered by the automated test workflow).
 - OpenCV and NumPy.
 - PySerial for serial-connected hardware tools.
 - Matplotlib for plots.
