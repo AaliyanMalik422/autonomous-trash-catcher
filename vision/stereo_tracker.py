@@ -37,6 +37,23 @@ class StereoCalibration:
         self.R1 = np.asarray(self.R1, dtype=float)
         if self.R1.shape != (3, 3) or not np.all(np.isfinite(self.R1)):
             raise ValueError("R1 must be a finite 3x3 rectification rotation")
+        if not np.allclose(self.R1.T @ self.R1, np.eye(3), atol=1e-3) or not np.isclose(
+            np.linalg.det(self.R1), 1.0, atol=1e-3
+        ):
+            raise ValueError("R1 must be a proper orthonormal rotation matrix")
+        self.image_size = tuple(int(v) for v in self.image_size)
+        if len(self.image_size) != 2 or min(self.image_size) <= 0:
+            raise ValueError("image_size must contain positive width and height")
+        self.P1 = np.asarray(self.P1, dtype=float)
+        self.P2 = np.asarray(self.P2, dtype=float)
+        if (self.P1.shape != (3, 4) or self.P2.shape != (3, 4)
+                or not np.all(np.isfinite(self.P1)) or not np.all(np.isfinite(self.P2))):
+            raise ValueError("P1 and P2 must be finite 3x4 projection matrices")
+        if self.P1[0, 0] <= 0 or self.P2[0, 0] <= 0:
+            raise ValueError("Stereo projection matrices must have positive focal lengths")
+        baseline = -self.P2[0, 3] / self.P2[0, 0]
+        if not np.isfinite(baseline) or baseline <= 0:
+            raise ValueError("Stereo calibration must have a positive horizontal baseline")
 
     @classmethod
     def ideal(cls, width=640, height=480, focal_px=600.0, baseline_m=0.12):
@@ -91,19 +108,36 @@ class StereoCalibration:
 class RigGeometry:
     """Pose of the LEFT phone's rear-camera lens in the robot/world frame.
 
-    Stereo triangulation is expressed relative to the left camera optical centre,
-    not the midpoint of the phone pair. Measure these offsets from that lens.
+    Stereo points are relative to the left lens, not the rig midpoint. The world
+    frame is robot-relative: +X right, +Y forward, +Z up. yaw_deg is the camera
+    rig's heading offset from robot +Y; positive yaw points the optical axis
+    toward robot +X. Keep the mount level (no camera roll) and measure the
+    lens offsets from the robot's odometry ZERO origin.
     """
     cam_height_m: float = 1.0      # left lens height above the floor
     pitch_deg: float = 0.0         # downward tilt of the optical axis (positive = looking down)
-    cam_x_m: float = 0.0           # left lens lateral position in world X
-    cam_y_m: float = 0.0           # left lens forward position in world Y
+    yaw_deg: float = 0.0           # rig heading offset; positive = points to robot right
+    cam_x_m: float = 0.0           # left lens lateral position in robot/world frame
+    cam_y_m: float = 0.0           # left lens forward position in robot/world frame
+
+    def __post_init__(self):
+        values = (self.cam_height_m, self.pitch_deg, self.yaw_deg, self.cam_x_m, self.cam_y_m)
+        if not all(np.isfinite(float(v)) for v in values):
+            raise ValueError("Rig geometry values must all be finite")
+        if self.cam_height_m <= 0:
+            raise ValueError("Camera height must be positive")
+        if not -89.0 <= self.pitch_deg <= 89.0:
+            raise ValueError("Camera pitch must be between -89 and +89 degrees")
 
     def cam_to_world(self, xc, yc, zc):
-        th = np.radians(self.pitch_deg)
-        X = xc + self.cam_x_m
-        Y = -yc * np.sin(th) + zc * np.cos(th) + self.cam_y_m
-        Z = self.cam_height_m - yc * np.cos(th) - zc * np.sin(th)
+        pitch = np.radians(self.pitch_deg)
+        yaw = np.radians(self.yaw_deg)
+        local_x = float(xc)
+        local_y = -float(yc) * np.sin(pitch) + float(zc) * np.cos(pitch)
+        Z = self.cam_height_m - float(yc) * np.cos(pitch) - float(zc) * np.sin(pitch)
+        cy, sy = np.cos(yaw), np.sin(yaw)
+        X = cy * local_x + sy * local_y + self.cam_x_m
+        Y = -sy * local_x + cy * local_y + self.cam_y_m
         return float(X), float(Y), float(Z)
 
     @classmethod
