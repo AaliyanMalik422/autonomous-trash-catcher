@@ -239,6 +239,10 @@ def test_logger_roundtrip(tmp_path):
 # ---------------------------------------------------------------- skid-steer wifi
 def test_wifi_link_dry_run_and_parity():
     link = ESP32WifiLink(dry_run=True, min_interval_s=0.05)
+    with pytest.raises(ValueError, match="finite"):
+        link.pos(float("nan"), 0.0)
+    with pytest.raises(ValueError, match="finite"):
+        link.vel(0.0, float("inf"), 0.0)
     assert link.send_target(0.123456, -0.5)
     assert not link.send_target(0.2, 0.2)          # rate limited
     link.home()
