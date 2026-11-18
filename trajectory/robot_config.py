@@ -4,6 +4,7 @@ Edit config/robot.json once; `python main.py --live` then needs no other flags.
 Command-line flags still override anything in the file.
 """
 import json
+import math
 import os
 from dataclasses import asdict, dataclass, fields
 from typing import Optional
@@ -31,6 +32,23 @@ class RobotSettings:
     calib: str = "stereo_calib.npz"
     rig: str = "rig.json"
     correction: Optional[str] = "calibration.json"
+
+    def __post_init__(self):
+        if not str(self.left).strip() or not str(self.right).strip():
+            raise ValueError("Both camera sources must be non-empty")
+        if str(self.left).strip() == str(self.right).strip():
+            raise ValueError("Left and right camera sources must be different")
+        if self.fps <= 0 or self.width <= 0 or self.height <= 0:
+            raise ValueError("Camera FPS, width, and height must be positive")
+        if not 1 <= int(self.wifi_port) <= 65535:
+            raise ValueError("wifi_port must be between 1 and 65535")
+        numeric = (self.right_offset_ms, self.latency_s, self.home_x, self.home_y)
+        if not all(math.isfinite(float(v)) for v in numeric):
+            raise ValueError("Camera timing and robot home coordinates must be finite")
+        if self.latency_s < 0:
+            raise ValueError("latency_s cannot be negative")
+        if not str(self.wifi_ip).strip():
+            raise ValueError("wifi_ip must be non-empty")
 
     def has_placeholder_sources(self) -> bool:
         return "PHONE" in str(self.left) or "PHONE" in str(self.right)
