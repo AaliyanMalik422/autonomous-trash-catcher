@@ -10,6 +10,7 @@ from trajectory.mock_vision import MockStereoCamera
 from vision.stereo_tracker import RigGeometry, StereoCalibration, StereoTracker
 from vision.cameras import parse_source
 from vision.synthetic import SyntheticRig
+from vision.calibrate_stereo import ensure_empty_capture_directory
 
 
 def _warm(tr, rig, n=40):
@@ -183,3 +184,11 @@ def test_calibration_rejects_frame_size_mismatch():
 def test_calibration_rejects_invalid_rectification_rotation():
     with pytest.raises(ValueError, match="R1 must be a finite 3x3"):
         StereoCalibration((640, 480), np.eye(3), np.eye(3), R1=np.eye(2))
+
+
+def test_calibration_capture_rejects_existing_session_images(tmp_path):
+    ensure_empty_capture_directory(str(tmp_path))
+    (tmp_path / "left_00.png").write_bytes(b"old left capture")
+    (tmp_path / "right_00.png").write_bytes(b"old right capture")
+    with pytest.raises(SystemExit, match="fresh empty directory"):
+        ensure_empty_capture_directory(str(tmp_path))
