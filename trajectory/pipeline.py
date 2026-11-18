@@ -9,6 +9,7 @@ States:  IDLE -> TRACKING -> ACTIVE -> COOLDOWN -> IDLE
   COOLDOWN      : ignore input briefly so the thrown object / catch does not retrigger.
 """
 from dataclasses import dataclass
+import math
 from typing import Optional
 
 from .calibration import LandingCorrection, ThrowLogger
@@ -35,10 +36,35 @@ def reach_distance(ttl: float, max_accel: float, max_speed: float) -> float:
     """Farthest the robot can travel from rest in `ttl` seconds."""
     if ttl <= 0:
         return 0.0
+    if max_accel <= 0 or max_speed <= 0:
+        raise ValueError("max_accel and max_speed must be positive")
     t_acc = max_speed / max_accel
     if ttl <= t_acc:
         return 0.5 * max_accel * ttl * ttl
     return 0.5 * max_accel * t_acc ** 2 + max_speed * (ttl - t_acc)
+
+
+def skid_steer_turn_time(x: float, y: float, max_turn_accel: float,
+                         max_turn_rate: float) -> float:
+    """Conservative rest-to-heading time before a skid-steer can drive to (x, y).
+
+    Mirrors the ESP32 controller's choice to reverse when a target bearing is
+    more than 90 degrees away. Uses a triangular/trapezoidal angular-velocity
+    profile; controller-specific settling is covered by the safety margin.
+    """
+    if max_turn_accel <= 0 or max_turn_rate <= 0:
+        raise ValueError("turn acceleration and turn rate must be positive")
+    distance = (x * x + y * y) ** 0.5
+    if distance <= 1e-9:
+        return 0.0
+    angle = abs(math.atan2(-x, y))
+    if angle > math.pi / 2:
+        angle = math.pi - angle
+    ramp_angle = max_turn_rate * max_turn_rate / max_turn_accel
+    if angle <= ramp_angle:
+        return 2.0 * (angle / max_turn_accel) ** 0.5
+    ramp_time = max_turn_rate / max_turn_accel
+    return 2.0 * ramp_time + (angle - ramp_angle) / max_turn_rate
 
 
 class TrajectoryEngine:
@@ -74,7 +100,11 @@ class TrajectoryEngine:
         cx, cy = self.correction.apply(pred.x, pred.y)
         rx, ry, clamped = self._to_robot_frame(cx, cy)
         dist = (rx * rx + ry * ry) ** 0.5
-        reachable = (not clamped) and dist <= reach_distance(ttl_eff, e.max_accel, e.max_speed)
+        turn_time = skid_steer_turn_time(rx, ry, e.max_turn_accel, e.max_turn_rate)
+        available_drive_time = max(0.0, ttl_eff - e.turn_time_margin * turn_time)
+        reachable = (not clamped) and dist <= reach_distance(
+            available_drive_time, e.max_accel, e.max_speed
+        )
         return Command("target", rx, ry, ttl_eff, pred.sigma, reachable, clamped, pred)
 
     def _finish(self, t) -> Optional[Command]:
