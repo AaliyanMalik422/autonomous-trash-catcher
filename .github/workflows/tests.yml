@@ -30,3 +30,7 @@ jobs:
           python -m pip install -r requirements.txt
       - name: Run tests
         run: python -m pytest -q tests
+      - name: Smoke-test trajectory simulation
+        run: python main.py --sim --n 3
+      - name: Smoke-test end-to-end synthetic stereo simulation
+        run: python main.py --sim-vision
