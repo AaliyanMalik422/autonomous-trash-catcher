@@ -248,3 +248,29 @@ def test_wifi_link_dry_run_and_parity():
     assert link.sent == ["<POS,0.123,-0.500>", "<HOME>", "<STOP>", "<PING>", "<ZERO>"]
     link.close()
 
+
+
+def test_skid_steer_turn_time_is_zero_for_straight_ahead():
+    from trajectory.pipeline import skid_steer_turn_time
+    assert skid_steer_turn_time(0.0, 1.0, 10.0, 2.0) == pytest.approx(0.0)
+
+
+def test_skid_steer_turn_time_accounts_for_lateral_and_reverse_targets():
+    from trajectory.pipeline import skid_steer_turn_time
+    straight = skid_steer_turn_time(0.0, 1.0, 10.0, 2.0)
+    lateral = skid_steer_turn_time(1.0, 0.0, 10.0, 2.0)
+    reverse = skid_steer_turn_time(0.0, -1.0, 10.0, 2.0)
+    assert straight < lateral
+    assert lateral == pytest.approx(reverse)
+
+
+def test_turn_aware_reachability_rejects_lateral_target_with_short_ttl():
+    cfg = Config()
+    cfg.engine.turn_time_margin = 1.5
+    cam = MockStereoCamera(fps=60, noise_std_meters=0.0)
+    pk, _ = cam.generate_throw(start_pos=(0.0, 2.6, 1.3), velocity=(2.0, -1.0, 2.2))
+    eng = TrajectoryEngine(cfg)
+    _, cmds = _run_engine(pk, eng)
+    targets = [c for _, c in cmds if c.kind == "target"]
+    assert targets
+    assert not targets[0].reachable
