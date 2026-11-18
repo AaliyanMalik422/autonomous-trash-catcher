@@ -493,7 +493,7 @@ static bool parseFiniteArg(const char *text, float &value) {
   if (!text || !*text) return false;
   char *end = nullptr;
   value = strtof(text, &end);
-  return end != text && *end == '\\0' && isfinite(value);
+  return end != text && *end == '\0' && isfinite(value);
 }
 
 static void handleCmd(char *body) {
