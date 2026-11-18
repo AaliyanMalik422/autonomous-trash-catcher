@@ -371,6 +371,10 @@ void motionUpdate() {
  */
 void moveRobot(float x_velocity, float y_velocity, float rotation_speed) {
   (void)x_velocity;
+  if (!isfinite(y_velocity) || !isfinite(rotation_speed)) {
+    y_velocity = 0.0f;
+    rotation_speed = 0.0f;
+  }
   tgtY = y_velocity; tgtW = rotation_speed;
   desaturate(tgtY, tgtW);
   lastCmdMs = millis();
@@ -562,7 +566,10 @@ static void pollUdp() {
       }
     } else {                                 // legacy "y,w" (normalised -1..1)
       float y, w;
-      if (sscanf(buf, "%f,%f", &y, &w) == 2) { mode = MODE_VEL; applyDrive(y, w); }
+      if (sscanf(buf, "%f,%f", &y, &w) == 2 && isfinite(y) && isfinite(w)) {
+        mode = MODE_VEL;
+        applyDrive(y, w);
+      }
     }
     n = udp.parsePacket();
   }
@@ -588,8 +595,15 @@ static void handleDrive() {
   // Manual joystick input must exit position mode or positionStep() will overwrite it.
   mode = MODE_VEL;
   posTx = posTy = 0;
-  const float y = constrain(server.arg("y").toFloat(), -1.0f, 1.0f) * WIFI_MAX_Y;
-  const float w = constrain(server.arg("w").toFloat(), -1.0f, 1.0f) * WIFI_MAX_W;
+  const float yRaw = server.arg("y").toFloat();
+  const float wRaw = server.arg("w").toFloat();
+  if (!isfinite(yRaw) || !isfinite(wRaw)) {
+    moveRobot(0.0f, 0.0f, 0.0f);
+    server.send(400, "text/plain", "invalid drive command");
+    return;
+  }
+  const float y = constrain(yRaw, -1.0f, 1.0f) * WIFI_MAX_Y;
+  const float w = constrain(wRaw, -1.0f, 1.0f) * WIFI_MAX_W;
   moveRobot(0.0f, y, w);
   server.send(200, "text/plain", "ok");
 }
