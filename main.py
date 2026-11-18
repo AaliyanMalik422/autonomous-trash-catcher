@@ -187,6 +187,18 @@ def wait_for_ack(link, expected, timeout_s=1.0):
     return False
 
 
+def handle_missing_camera_pair(eng, link, now=None):
+    """Handle a camera-pair timeout without allowing stale motion commands to persist."""
+    if eng.state == ACTIVE:
+        link.stop()
+        raise RuntimeError(
+            "Synchronized camera frames were lost during an active interception. "
+            "STOP was sent and live autonomy was aborted."
+        )
+    tick_time = time.monotonic() if now is None else now
+    dispatch(eng.tick(tick_time), link)
+
+
 def mode_live(a):
     import cv2
     from vision.cameras import StereoCameras
@@ -238,10 +250,9 @@ def mode_live(a):
             link.zero()
         print("Learning background... keep the zone empty for ~2 s. Press q (with --show) or Ctrl+C to quit.")
         while True:
-            r = cams.read(seq, timeout=0.5)
+            r = cams.read(seq, timeout=0.15)
             if r is None:
-                eng_cmd = eng.tick(time.monotonic())
-                dispatch(eng_cmd, link)
+                handle_missing_camera_pair(eng, link)
                 continue
             t, L, R, seq = r
             pkt = tracker.process(L, R, t, *cams.last_times)
