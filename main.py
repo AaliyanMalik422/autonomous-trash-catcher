@@ -201,6 +201,30 @@ def wait_for_ack(link, expected, timeout_s=1.0):
     return False
 
 
+def robot_at_home(link, position_tolerance_m=0.05, speed_tolerance_mps=0.05,
+                  max_odo_age_s=0.5):
+    """Require fresh ESP32 odometry and a stationary robot at the ZERO origin."""
+    odo = getattr(link, "odo", None)
+    age_fn = getattr(link, "odo_age_s", None)
+    age = age_fn() if callable(age_fn) else None
+    if odo is None or age is None or age < 0 or age > max_odo_age_s:
+        return False
+    x, y, vx, vy, _ = odo
+    return (np.hypot(x, y) <= position_tolerance_m
+            and np.hypot(vx, vy) <= speed_tolerance_mps)
+
+
+def wait_for_fresh_odometry(link, timeout_s=1.5, max_age_s=0.5):
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        age_fn = getattr(link, "odo_age_s", None)
+        age = age_fn() if callable(age_fn) else None
+        if getattr(link, "odo", None) is not None and age is not None and 0 <= age <= max_age_s:
+            return True
+        time.sleep(0.01)
+    return False
+
+
 def handle_missing_camera_pair(eng, link, now=None):
     """Handle a camera-pair timeout without allowing stale motion commands to persist."""
     if eng.state == ACTIVE:
@@ -264,6 +288,13 @@ def mode_live(a):
                     "autonomous commands were not enabled."
                 )
             print("[init] robot odometry origin acknowledged")
+            link.odo = None
+            if not wait_for_fresh_odometry(link, timeout_s=1.5):
+                raise SystemExit(
+                    "ESP32 acknowledged ZERO but no fresh ODO telemetry arrived. "
+                    "Autonomous operation was not enabled."
+                )
+            print("[init] fresh ESP32 odometry verified")
         else:
             link.zero()
         print("Learning background... keep the zone empty for ~2 s. Press q (with --show) or Ctrl+C to quit.")
@@ -273,6 +304,17 @@ def mode_live(a):
                 handle_missing_camera_pair(eng, link)
                 continue
             t, L, R, seq = r
+            if not a.dry_run:
+                odo_age = link.odo_age_s()
+                if odo_age is None or odo_age > 0.5:
+                    link.stop()
+                    raise RuntimeError(
+                        "Fresh ESP32 odometry was lost during live operation. STOP was sent; autonomy aborted."
+                    )
+                # The reachability model assumes the robot starts at ZERO and at rest.
+                # Do not arm another throw until the return-home move has actually completed.
+                if eng.state == IDLE and not robot_at_home(link):
+                    continue
             pkt = tracker.process(L, R, t, *cams.last_times)
             cmd = eng.update(pkt)
             dispatch(cmd, link)
