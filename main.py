@@ -162,7 +162,7 @@ def mode_sim_vision(a):
     # Use a representative, near-straight flight that is trackable and reachable
     # from the configured robot home, so this checks the positive command path.
     pk, tl = cam.generate_throw(
-        start_pos=(0.2, 2.6, 1.3), velocity=(-0.28, -1.8, 2.2)
+        start_pos=(0.2, 2.8, 1.3), velocity=(-0.28, -1.8, 2.2)
     )
     print(f"true landing X={tl['X_land']:+.3f} Y={tl['Y_land']:+.3f}")
     pkts, errs = [], []
@@ -173,7 +173,8 @@ def mode_sim_vision(a):
         pkts.append(pkt)
     print(f"3D tracking error: median {np.median(errs)*100:.1f} cm over {len(errs)}/{len(pk)} frames")
     run_packets(pkts, eng, link)
-    if not any(message.startswith("<POS,") for message in link.sent):
+    pos_messages = [message for message in link.sent if message.startswith("<POS,")]
+    if not pos_messages:
         detected_count = sum(bool(p.get("detected")) for p in pkts)
         raise RuntimeError(
             "Synthetic stereo smoke test did not dispatch an interception target: "
@@ -181,6 +182,12 @@ def mode_sim_vision(a):
             f"filter={eng.filter.last_reason!r}, buffered={len(eng.filter.trajectory_buffer)}, "
             f"last_command={eng.last_command!r}. "
             "The full vision-to-robot path must produce a POS command before it passes."
+        )
+    target_xy = np.array([float(v) for v in pos_messages[0].strip("<>").split(",")[1:3]])
+    if np.linalg.norm(target_xy) < 0.05:
+        raise RuntimeError(
+            f"Synthetic stereo smoke test generated a trivial target {target_xy.tolist()} m; "
+            "it must exercise a measurable robot repositioning command."
         )
 
 
