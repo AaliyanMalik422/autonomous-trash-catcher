@@ -24,8 +24,8 @@
  *   x_velocity is accepted but IGNORED (normal wheels cannot strafe).
  *
  * Hardware:
- *   LEFT  BTS7960 drives FL + RL motors in parallel   RPWM=25  LPWM=26
- *   RIGHT BTS7960 drives FR + RR motors in parallel   RPWM=32  LPWM=33
+ *   LEFT  BTS7960 drives FL + RL motors in parallel   RPWM=32  LPWM=33
+ *   RIGHT BTS7960 drives FR + RR motors in parallel   RPWM=25  LPWM=26
  *   BTS VCC, R_EN, L_EN -> 3V3.  R_IS / L_IS unconnected.
  *   Encoders (A / B): FL 34/35, FR 36/39, RL 16/17, RR 14/5
  *
