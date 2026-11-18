@@ -538,7 +538,7 @@ static void handleCmd(char *body) {
     return;                                  // unknown command: ignore
   }
   char reply[40];
-  snprintf(reply, sizeof(reply), "<ACK,%s>\\n", cmd);
+  snprintf(reply, sizeof(reply), "<ACK,%s>\n", cmd);
   sendTo(reply);
 }
 
