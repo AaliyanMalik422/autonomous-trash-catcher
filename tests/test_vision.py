@@ -192,3 +192,29 @@ def test_calibration_capture_rejects_existing_session_images(tmp_path):
     (tmp_path / "right_00.png").write_bytes(b"old right capture")
     with pytest.raises(SystemExit, match="fresh empty directory"):
         ensure_empty_capture_directory(str(tmp_path))
+
+
+def test_rig_geometry_yaw_rotates_camera_coordinates_into_robot_frame():
+    rig = RigGeometry(cam_height_m=1.0, yaw_deg=90.0, cam_x_m=0.2, cam_y_m=0.3)
+    X, Y, Z = rig.cam_to_world(0.0, 0.0, 2.0)
+    assert X == pytest.approx(2.2)
+    assert Y == pytest.approx(0.3)
+    assert Z == pytest.approx(1.0)
+
+
+def test_rig_geometry_rejects_invalid_pose():
+    with pytest.raises(ValueError, match="Camera height"):
+        RigGeometry(cam_height_m=0.0)
+    with pytest.raises(ValueError, match="pitch"):
+        RigGeometry(pitch_deg=90.0)
+
+
+def test_stereo_calibration_rejects_non_rotation_r1():
+    cal = SyntheticRig().calib
+    with pytest.raises(ValueError, match="orthonormal"):
+        StereoCalibration(
+            K1=cal.K1, D1=cal.D1, K2=cal.K2, D2=cal.D2,
+            R=cal.R, T=cal.T, R1=np.zeros((3, 3)),
+            P1=cal.P1, P2=cal.P2, Q=cal.Q, image_size=cal.image_size,
+            map1x=cal.map1x, map1y=cal.map1y, map2x=cal.map2x, map2y=cal.map2y,
+        )
