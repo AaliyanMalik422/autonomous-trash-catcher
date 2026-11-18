@@ -303,3 +303,15 @@ def test_predictor_rejects_non_finite_and_duplicate_timestamps():
     duplicate = [dict(p) for p in pk[:8]]
     duplicate[4]["timestamp"] = duplicate[3]["timestamp"]
     assert TrajectoryPredictor().predict(duplicate) is None
+
+
+def test_robot_settings_reject_invalid_camera_and_network_configuration():
+    from trajectory.robot_config import RobotSettings
+    with pytest.raises(ValueError, match="different"):
+        RobotSettings(left="0", right="0")
+    with pytest.raises(ValueError, match="positive"):
+        RobotSettings(fps=0)
+    with pytest.raises(ValueError, match="wifi_port"):
+        RobotSettings(wifi_port=70000)
+    with pytest.raises(ValueError, match="finite"):
+        RobotSettings(home_y=float("nan"))
