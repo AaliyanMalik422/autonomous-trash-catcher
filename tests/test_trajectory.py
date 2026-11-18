@@ -257,6 +257,8 @@ def test_wifi_link_dry_run_and_parity():
 def test_skid_steer_turn_time_is_zero_for_straight_ahead():
     from trajectory.pipeline import skid_steer_turn_time
     assert skid_steer_turn_time(0.0, 1.0, 10.0, 2.0) == pytest.approx(0.0)
+    # Firmware drives while turning when the remaining heading error is <= 0.35 rad.
+    assert skid_steer_turn_time(0.2, 1.0, 10.0, 2.0) == pytest.approx(0.0)
 
 
 def test_skid_steer_turn_time_accounts_for_lateral_and_reverse_targets():
