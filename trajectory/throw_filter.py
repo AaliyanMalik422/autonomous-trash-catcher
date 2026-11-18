@@ -64,6 +64,8 @@ class ThrowFilter:
             return self._reject("invalid measurement fields")
         if not np.all(np.isfinite([t, x, y, z, area, confidence])):
             return self._reject("non-finite measurement")
+        pkt = dict(pkt, timestamp=t, X=x, Y=y, Z=z, blob_area=area,
+                   detection_confidence=confidence)
         self._check_gap(t)
 
         if confidence < 0.18:
