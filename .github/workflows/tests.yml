@@ -34,3 +34,20 @@ jobs:
         run: python main.py --sim --n 3
       - name: Smoke-test end-to-end synthetic stereo simulation
         run: python main.py --sim-vision
+
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+      - name: Install ESP32 Arduino core
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+      - name: Compile ESP32 firmware
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 skid_steer_locomotion
