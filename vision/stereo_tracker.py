@@ -28,6 +28,15 @@ class StereoCalibration:
     P2: np.ndarray
     map1: Optional[Tuple[np.ndarray, np.ndarray]] = None   # left rectify maps (None = already rectified)
     map2: Optional[Tuple[np.ndarray, np.ndarray]] = None
+    # R1 maps original-left-camera coordinates into the rectified-left frame.
+    # Triangulation uses P1/P2, so reconstructed points must be rotated by R1.T
+    # before applying the physical camera-to-robot/world transform.
+    R1: np.ndarray = field(default_factory=lambda: np.eye(3, dtype=float))
+
+    def __post_init__(self):
+        self.R1 = np.asarray(self.R1, dtype=float)
+        if self.R1.shape != (3, 3) or not np.all(np.isfinite(self.R1)):
+            raise ValueError("R1 must be a finite 3x3 rectification rotation")
 
     @classmethod
     def ideal(cls, width=640, height=480, focal_px=600.0, baseline_m=0.12):
@@ -39,7 +48,7 @@ class StereoCalibration:
         return cls((width, height), P1, P2)
 
     def save(self, path: str):
-        d = dict(size=np.array(self.image_size), P1=self.P1, P2=self.P2)
+        d = dict(size=np.array(self.image_size), P1=self.P1, P2=self.P2, R1=self.R1)
         if self.map1 is not None:
             d.update(m1x=self.map1[0], m1y=self.map1[1], m2x=self.map2[0], m2y=self.map2[1])
         np.savez_compressed(path, **d)
@@ -48,9 +57,14 @@ class StereoCalibration:
     def load(cls, path: str):
         d = np.load(path)
         maps = ("m1x" in d.files)
+        if "R1" not in d.files:
+            raise ValueError(
+                f"{path} is an older calibration without the rectification rotation R1. "
+                "Regenerate it with: python -m vision.calibrate_stereo solve"
+            )
         return cls(tuple(int(v) for v in d["size"]), d["P1"], d["P2"],
                    (d["m1x"], d["m1y"]) if maps else None,
-                   (d["m2x"], d["m2y"]) if maps else None)
+                   (d["m2x"], d["m2y"]) if maps else None, d["R1"])
 
     @property
     def focal(self): return float(self.P1[0, 0])
@@ -58,7 +72,16 @@ class StereoCalibration:
     def baseline(self): return float(-self.P2[0, 3] / self.P2[0, 0])
 
     def rectify(self, left, right):
-        if self.map1 is None:
+        if left is None or right is None:
+            raise ValueError("Stereo calibration received an empty camera frame")
+        expected = self.image_size
+        if tuple(left.shape[1::-1]) != expected or tuple(right.shape[1::-1]) != expected:
+            raise ValueError(
+                f"Camera frame size must match calibration {expected[0]}x{expected[1]}; "
+                f"received left={left.shape[1::-1]} right={right.shape[1::-1]}. "
+                "Use the calibrated resolution; do not resize after calibration."
+            )
+        if self.map1 is None or self.map2 is None:
             return left, right
         return (cv2.remap(left, *self.map1, cv2.INTER_LINEAR),
                 cv2.remap(right, *self.map2, cv2.INTER_LINEAR))
@@ -66,11 +89,15 @@ class StereoCalibration:
 
 @dataclass
 class RigGeometry:
-    """Where the camera pair sits in the world (measure with a tape + phone level)."""
-    cam_height_m: float = 1.0      # lens height above the floor
+    """Pose of the LEFT phone's rear-camera lens in the robot/world frame.
+
+    Stereo triangulation is expressed relative to the left camera optical centre,
+    not the midpoint of the phone pair. Measure these offsets from that lens.
+    """
+    cam_height_m: float = 1.0      # left lens height above the floor
     pitch_deg: float = 0.0         # downward tilt of the optical axis (positive = looking down)
-    cam_x_m: float = 0.0           # lateral offset of the rig centre (world X)
-    cam_y_m: float = 0.0           # forward offset (world Y) of the rig from the origin
+    cam_x_m: float = 0.0           # left lens lateral position in world X
+    cam_y_m: float = 0.0           # left lens forward position in world Y
 
     def cam_to_world(self, xc, yc, zc):
         th = np.radians(self.pitch_deg)
@@ -215,8 +242,20 @@ class StereoTracker:
         pts = cv2.triangulatePoints(self.calib.P1, self.calib.P2,
                                     np.array([[ul], [vl]], dtype=float),
                                     np.array([[ur], [vr]], dtype=float))
-        xc, yc, zc = (pts[:3, 0] / pts[3, 0]).tolist()
-        if not (0.2 < zc < c.max_depth_m):
+        w = float(pts[3, 0])
+        if not np.isfinite(w) or abs(w) < 1e-9:
+            return None
+        rectified_point = pts[:3, 0] / w
+        if not np.all(np.isfinite(rectified_point)):
+            return None
+        # Depth validity is checked in the rectified stereo coordinate frame.
+        if not (0.2 < float(rectified_point[2]) < c.max_depth_m):
+            return None
+        # Convert to the ORIGINAL left-camera frame. RigGeometry expects camera X
+        # right, Y down, Z forward; it must not receive rectified-frame coordinates.
+        camera_point = self.calib.R1.T @ rectified_point
+        xc, yc, zc = (float(v) for v in camera_point)
+        if not np.all(np.isfinite(camera_point)) or zc <= 0:
             return None
         return xc, yc, zc
 
