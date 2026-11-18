@@ -174,8 +174,12 @@ def mode_sim_vision(a):
     print(f"3D tracking error: median {np.median(errs)*100:.1f} cm over {len(errs)}/{len(pk)} frames")
     run_packets(pkts, eng, link)
     if not any(message.startswith("<POS,") for message in link.sent):
+        detected_count = sum(bool(p.get("detected")) for p in pkts)
         raise RuntimeError(
-            "Synthetic stereo smoke test did not dispatch an interception target. "
+            "Synthetic stereo smoke test did not dispatch an interception target: "
+            f"{detected_count}/{len(pkts)} frames detected, engine={eng.state}, "
+            f"filter={eng.filter.last_reason!r}, buffered={len(eng.filter.trajectory_buffer)}, "
+            f"last_command={eng.last_command!r}. "
             "The full vision-to-robot path must produce a POS command before it passes."
         )
 
