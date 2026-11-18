@@ -274,3 +274,24 @@ def test_turn_aware_reachability_rejects_lateral_target_with_short_ttl():
     targets = [c for _, c in cmds if c.kind == "target"]
     assert targets
     assert not targets[0].reachable
+
+
+def test_throw_filter_rejects_non_finite_measurements():
+    f = ThrowFilter()
+    pkt = {"timestamp": 0.0, "detected": True, "X": float("nan"), "Y": 2.0,
+           "Z": 1.0, "blob_area": 300.0}
+    valid, buf = f.process_frame(pkt)
+    assert not valid
+    assert not buf
+    assert f.last_reason == "non-finite measurement"
+
+
+def test_predictor_rejects_non_finite_and_duplicate_timestamps():
+    cam = MockStereoCamera(fps=60, noise_std_meters=0.0)
+    pk, _ = cam.generate_throw()
+    bad = [dict(p) for p in pk[:8]]
+    bad[4]["Z"] = float("nan")
+    assert TrajectoryPredictor().predict(bad) is None
+    duplicate = [dict(p) for p in pk[:8]]
+    duplicate[4]["timestamp"] = duplicate[3]["timestamp"]
+    assert TrajectoryPredictor().predict(duplicate) is None
