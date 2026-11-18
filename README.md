@@ -146,12 +146,13 @@ Create **rig.json** with measured camera geometry:
 {
   "cam_height_m": 1.0,
   "pitch_deg": 0.0,
+  "yaw_deg": 0.0,
   "cam_x_m": 0.0,
   "cam_y_m": 0.0
 }
 ~~~
 
-These values are examples only. Use measurements from the installed camera rig.
+These values are examples only. Measure the left camera lens position relative to the robot's odometry ZERO origin. yaw_deg is the camera rig's heading offset from the robot's forward axis (positive points right); pitch_deg is downward tilt. The current model assumes the mount has no roll. Live mode refuses to start without a valid measured rig file.
 
 ## Live vision
 
