@@ -97,9 +97,9 @@ def solve(a):
 
     if len(obj) < 10:
         raise SystemExit(f"Only {len(obj)} usable pairs; need >= 10 (20-30 recommended)")
-    rms, K1, D1, _, _ = cv2.calibrateCamera(obj, pl, size, None, None)
-    rms2, K2, D2, _, _ = cv2.calibrateCamera(obj, pr, size, None, None)
-    rms, K1, D1, K2, D2, R, T, _, _ = cv2.stereoCalibrate(
+    left_rms, K1, D1, _, _ = cv2.calibrateCamera(obj, pl, size, None, None)
+    right_rms, K2, D2, _, _ = cv2.calibrateCamera(obj, pr, size, None, None)
+    stereo_rms, K1, D1, K2, D2, R, T, _, _ = cv2.stereoCalibrate(
         obj, pl, pr, K1, D1, K2, D2, size, flags=cv2.CALIB_FIX_INTRINSIC, criteria=crit)
     R1, R2, P1, P2, Q, _, _ = cv2.stereoRectify(K1, D1, K2, D2, size, R, T, alpha=0)
 
@@ -114,12 +114,12 @@ def solve(a):
     m2 = cv2.initUndistortRectifyMap(K2, D2, R2, P2, size, cv2.CV_16SC2)
     cal = StereoCalibration(size, P1, P2, m1, m2, R1)
     cal.save(a.out)
-    print(f"{len(obj)} pairs | stereo RMS {rms:.3f} px | "
-          f"left/right intrinsic RMS {rms2:.3f} px / {rms2:.3f} px | "
+    print(f"{len(obj)} pairs | stereo RMS {stereo_rms:.3f} px | "
+          f"left intrinsic RMS {left_rms:.3f} px | right intrinsic RMS {right_rms:.3f} px | "
           f"baseline {cal.baseline*100:.1f} cm | focal {cal.focal:.0f} px -> saved {a.out}")
-    if rms > 1.0:
+    if max(left_rms, right_rms, stereo_rms) > 1.0:
         print("WARNING: RMS > 1 px. Retake pairs: board sharp, flat, and spread across the image.")
-    elif rms > 0.6:
+    elif max(left_rms, right_rms, stereo_rms) > 0.6:
         print("NOTE: RMS is above the preferred 0.6 px target; validate depth at known distances.")
 
 
