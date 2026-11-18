@@ -152,7 +152,7 @@ Create **rig.json** with measured camera geometry:
 }
 ~~~
 
-These values are examples only. Measure the left camera lens position relative to the robot's odometry ZERO origin. yaw_deg is the camera rig's heading offset from the robot's forward axis (positive points right); pitch_deg is downward tilt. The current model assumes the mount has no roll. Live mode refuses to start without a valid measured rig file.
+These values are examples only. Choose one shared robot-aligned world frame for both the camera pose and the robot home coordinates. The default convention places the left camera lens at X=0, Y=0, so cam_x_m and cam_y_m are normally zero; set home_x/home_y in config/robot.json to the robot's ZERO location measured in that same frame (the defaults are examples, not measured values). yaw_deg is the camera rig's heading offset from robot forward (positive points right); pitch_deg is downward tilt. The current model assumes the mount has no roll. Live mode refuses to start without a valid measured rig file.
 
 ## Live vision
 
