@@ -178,9 +178,9 @@ The interface uses the following commands:
 | STOP | Stop the drive system |
 | PING | Check communication with the controller |
 
-The ESP32 reports acknowledgements and odometry data. The robot's coordinate convention and the camera/world coordinate frame must be aligned before autonomous operation.
+The ESP32 reports acknowledgements and odometry data. Live mode requires a fresh PING acknowledgement, a ZERO acknowledgement, and continuing fresh odometry telemetry. It will not re-arm a new throw until odometry confirms that the robot has returned to the ZERO origin and is stationary. The robot's coordinate convention and the camera/world coordinate frame must be aligned before autonomous operation.
 
-Only run live mode without **--dry-run** after checking the camera calibration, coordinate-frame alignment, firmware, motor direction, odometry, and emergency stop. Begin with the robot secured or with the drive wheels raised. Keep a clear test area and an independent means of stopping the motors.
+Only run live mode without **--dry-run** after checking the camera calibration, measured camera rig pose, coordinate-frame alignment, firmware, motor direction, encoder signs and scale, odometry, and emergency stop. Begin with the robot secured or with the drive wheels raised. Keep a clear test area and an independent means of stopping the motors.
 
 ## Validation status
 
