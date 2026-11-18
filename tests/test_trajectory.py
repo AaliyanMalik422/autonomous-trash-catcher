@@ -261,7 +261,7 @@ def test_skid_steer_turn_time_accounts_for_lateral_and_reverse_targets():
     lateral = skid_steer_turn_time(1.0, 0.0, 10.0, 2.0)
     reverse = skid_steer_turn_time(0.0, -1.0, 10.0, 2.0)
     assert straight < lateral
-    assert lateral == pytest.approx(reverse)
+    assert reverse < lateral  # the ESP32 can reverse instead of turning 180 degrees
 
 
 def test_turn_aware_reachability_rejects_lateral_target_with_short_ttl():
