@@ -56,6 +56,8 @@ class ThrowFilter:
             return self._reject("not detected")
 
         area = pkt.get("blob_area", 0.0)
+        if pkt.get("detection_confidence", 1.0) < 0.18:
+            return self._reject("low detector confidence")
         if not (c.min_area <= area <= c.max_area):
             return self._reject("blob size")
         if pkt["Z"] < c.min_height_z:

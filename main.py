@@ -79,11 +79,18 @@ def dispatch(cmd, link, verbose=True):
     if cmd is None:
         return
     if cmd.kind == "target":
+        # Never dispatch a clipped or physically unreachable interception target.
+        # A clamped coordinate is not the predicted landing point.
+        if cmd.clamped or not cmd.reachable:
+            link.stop()
+            if verbose:
+                reason = "outside configured reach area" if cmd.clamped else "insufficient time to reach"
+                print(f"[safety] target rejected ({reason}); STOP sent")
+            return
         link.send_target(cmd.x, cmd.y)
         if verbose:
-            flag = "" if cmd.reachable else "  [!] may be out of reach in time"
             print(f"[cmd] target x={cmd.x:+.3f} y={cmd.y:+.3f} ttl={cmd.ttl:.2f}s "
-                  f"sigma={cmd.sigma*100:.1f}cm{flag}")
+                  f"sigma={cmd.sigma*100:.1f}cm")
     elif cmd.kind == "home":
         link.home()
         if verbose:
@@ -169,6 +176,17 @@ def mode_replay(a):
     run_packets(pk, build_engine(a), make_link(a, force_dry_run=not a.realtime), realtime=a.realtime)
 
 
+def wait_for_ack(link, expected, timeout_s=1.0):
+    """Wait for a fresh acknowledgement from the ESP32; never reuse an old ACK."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        ack = link.last_ack
+        if ack is not None and ack[0] == expected:
+            return True
+        time.sleep(0.01)
+    return False
+
+
 def mode_live(a):
     import cv2
     from vision.cameras import StereoCameras
@@ -187,7 +205,10 @@ def mode_live(a):
         print(f"[warn] {a.rig} not found: using default rig geometry (height 1.0 m, no tilt) - 3D heights will be wrong")
         rig = RigGeometry()
     print(f"[init] cameras {a.left} | {a.right}  {a.fps} fps  offset {a.right_offset_ms} ms  latency {a.latency_s} s")
-    tracker = StereoTracker(calib, rig)
+    tracker = StereoTracker(
+        calib, rig, detector_backend=a.detector, yolo_model=a.yolo_model,
+        yolo_confidence=a.yolo_confidence, yolo_device=a.yolo_device,
+    )
     eng = build_engine(a)
     rec = Recorder() if a.record else None
     cams = StereoCameras(a.left, a.right, calib.image_size[0], calib.image_size[1], a.fps, a.swap,
@@ -196,14 +217,25 @@ def mode_live(a):
     seq, was_active = -1, False
     try:
         if not a.dry_run:
-            link.ping()
-            deadline = time.monotonic() + 1.5
-            while link.last_ack is None and time.monotonic() < deadline:
-                time.sleep(0.02)
-            if link.last_ack is None or link.last_ack[0] != "PING":
-                raise SystemExit("No <ACK,PING> from the skid-steer ESP32. Check the TrashBot Wi-Fi connection; no motion command was sent.")
+            link.last_ack = None
+            if not link.ping() or not wait_for_ack(link, "PING", timeout_s=1.5):
+                raise SystemExit(
+                    "No fresh <ACK,PING> from the skid-steer ESP32. Check the TrashBot Wi-Fi connection; "
+                    "no motion command was sent."
+                )
             print("[init] ESP32 Wi-Fi link verified")
-        link.zero()
+
+            # ZERO defines the robot-relative origin used by every POS target. Do not
+            # start perception/control until the controller confirms this reset.
+            link.last_ack = None
+            if not link.zero() or not wait_for_ack(link, "ZERO", timeout_s=1.0):
+                raise SystemExit(
+                    "ESP32 did not acknowledge <ZERO>. Check the controller and restart; "
+                    "autonomous commands were not enabled."
+                )
+            print("[init] robot odometry origin acknowledged")
+        else:
+            link.zero()
         print("Learning background... keep the zone empty for ~2 s. Press q (with --show) or Ctrl+C to quit.")
         while True:
             r = cams.read(seq, timeout=0.5)
@@ -261,6 +293,11 @@ def main():
     ap.add_argument("--config", help=f"settings file (default {DEFAULT_PATH})")
     ap.add_argument("--home-x", type=float, help="robot home X in world frame (m)")
     ap.add_argument("--home-y", type=float, help="robot home Y in world frame (m)")
+    ap.add_argument("--detector", choices=("yoloe", "blob"), default="blob",
+                    help="live detector backend (default: fast class-agnostic motion tracking)")
+    ap.add_argument("--yolo-model", default="yoloe-26n-seg.pt")
+    ap.add_argument("--yolo-confidence", type=float, default=0.18)
+    ap.add_argument("--yolo-device", default="cpu")
     ap.add_argument("--show", action="store_true")
     ap.add_argument("--record", action="store_true", help="save raw packets of each throw to logs/")
     ap.add_argument("--log-throws", action="store_true")

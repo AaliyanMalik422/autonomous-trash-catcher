@@ -512,6 +512,10 @@ static void handleCmd(char *body) {
     mode = MODE_VEL;
     moveRobot(0.0f, 0.0f, 0.0f);
   } else if (!strcmp(cmd, "ZERO")) {
+    // ZERO is also a safe reset: cancel any stale position target from a prior run.
+    mode = MODE_VEL;
+    posTx = posTy = 0;
+    moveRobot(0.0f, 0.0f, 0.0f);
     odoX = 0; odoY = 0; odoTh = 0;
   } else if (strcmp(cmd, "PING") != 0) {
     return;                                  // unknown command: ignore
@@ -564,6 +568,9 @@ static void handleStatus() {
 }
 
 static void handleDrive() {
+  // Manual joystick input must exit position mode or positionStep() will overwrite it.
+  mode = MODE_VEL;
+  posTx = posTy = 0;
   const float y = constrain(server.arg("y").toFloat(), -1.0f, 1.0f) * WIFI_MAX_Y;
   const float w = constrain(server.arg("w").toFloat(), -1.0f, 1.0f) * WIFI_MAX_W;
   moveRobot(0.0f, y, w);

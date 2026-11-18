@@ -16,6 +16,8 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
+from .yoloe_detector import YOLOETrashDetector, object_family
+
 
 # ----------------------------------------------------------------- calibration
 @dataclass
@@ -26,6 +28,15 @@ class StereoCalibration:
     P2: np.ndarray
     map1: Optional[Tuple[np.ndarray, np.ndarray]] = None   # left rectify maps (None = already rectified)
     map2: Optional[Tuple[np.ndarray, np.ndarray]] = None
+    # R1 maps original-left-camera coordinates into the rectified-left frame.
+    # Triangulation uses P1/P2, so reconstructed points must be rotated by R1.T
+    # before applying the physical camera-to-robot/world transform.
+    R1: np.ndarray = field(default_factory=lambda: np.eye(3, dtype=float))
+
+    def __post_init__(self):
+        self.R1 = np.asarray(self.R1, dtype=float)
+        if self.R1.shape != (3, 3) or not np.all(np.isfinite(self.R1)):
+            raise ValueError("R1 must be a finite 3x3 rectification rotation")
 
     @classmethod
     def ideal(cls, width=640, height=480, focal_px=600.0, baseline_m=0.12):
@@ -37,7 +48,7 @@ class StereoCalibration:
         return cls((width, height), P1, P2)
 
     def save(self, path: str):
-        d = dict(size=np.array(self.image_size), P1=self.P1, P2=self.P2)
+        d = dict(size=np.array(self.image_size), P1=self.P1, P2=self.P2, R1=self.R1)
         if self.map1 is not None:
             d.update(m1x=self.map1[0], m1y=self.map1[1], m2x=self.map2[0], m2y=self.map2[1])
         np.savez_compressed(path, **d)
@@ -46,9 +57,14 @@ class StereoCalibration:
     def load(cls, path: str):
         d = np.load(path)
         maps = ("m1x" in d.files)
+        if "R1" not in d.files:
+            raise ValueError(
+                f"{path} is an older calibration without the rectification rotation R1. "
+                "Regenerate it with: python -m vision.calibrate_stereo solve"
+            )
         return cls(tuple(int(v) for v in d["size"]), d["P1"], d["P2"],
                    (d["m1x"], d["m1y"]) if maps else None,
-                   (d["m2x"], d["m2y"]) if maps else None)
+                   (d["m2x"], d["m2y"]) if maps else None, d["R1"])
 
     @property
     def focal(self): return float(self.P1[0, 0])
@@ -56,7 +72,16 @@ class StereoCalibration:
     def baseline(self): return float(-self.P2[0, 3] / self.P2[0, 0])
 
     def rectify(self, left, right):
-        if self.map1 is None:
+        if left is None or right is None:
+            raise ValueError("Stereo calibration received an empty camera frame")
+        expected = self.image_size
+        if tuple(left.shape[1::-1]) != expected or tuple(right.shape[1::-1]) != expected:
+            raise ValueError(
+                f"Camera frame size must match calibration {expected[0]}x{expected[1]}; "
+                f"received left={left.shape[1::-1]} right={right.shape[1::-1]}. "
+                "Use the calibrated resolution; do not resize after calibration."
+            )
+        if self.map1 is None or self.map2 is None:
             return left, right
         return (cv2.remap(left, *self.map1, cv2.INTER_LINEAR),
                 cv2.remap(right, *self.map2, cv2.INTER_LINEAR))
@@ -64,11 +89,15 @@ class StereoCalibration:
 
 @dataclass
 class RigGeometry:
-    """Where the camera pair sits in the world (measure with a tape + phone level)."""
-    cam_height_m: float = 1.0      # lens height above the floor
+    """Pose of the LEFT phone's rear-camera lens in the robot/world frame.
+
+    Stereo triangulation is expressed relative to the left camera optical centre,
+    not the midpoint of the phone pair. Measure these offsets from that lens.
+    """
+    cam_height_m: float = 1.0      # left lens height above the floor
     pitch_deg: float = 0.0         # downward tilt of the optical axis (positive = looking down)
-    cam_x_m: float = 0.0           # lateral offset of the rig centre (world X)
-    cam_y_m: float = 0.0           # forward offset (world Y) of the rig from the origin
+    cam_x_m: float = 0.0           # left lens lateral position in world X
+    cam_y_m: float = 0.0           # left lens forward position in world Y
 
     def cam_to_world(self, xc, yc, zc):
         th = np.radians(self.pitch_deg)
@@ -89,7 +118,7 @@ class DetectorConfig:
     history: int = 300
     var_threshold: float = 28.0
     min_area: float = 60.0         # px; below is sensor noise
-    max_area: float = 2500.0       # px; above is a person / large object (matches FilterConfig)
+    max_area: float = 15000.0      # px; aligned with trajectory FilterConfig
     max_row_diff_px: float = 6.0   # epipolar tolerance after rectification
     min_disparity_px: float = 2.0
     max_depth_m: float = 8.0
@@ -156,14 +185,52 @@ class StereoTracker:
     """Frame pair in -> packet dict out (the format trajectory/ expects)."""
 
     def __init__(self, calib: StereoCalibration, rig: Optional[RigGeometry] = None,
-                 det_cfg: Optional[DetectorConfig] = None):
+                 det_cfg: Optional[DetectorConfig] = None, detector_backend: str = "blob",
+                 yolo_model: str = "yoloe-26n-seg.pt", yolo_confidence: float = 0.18,
+                 yolo_device: str = "cpu"):
         self.calib = calib
         self.rig = rig or RigGeometry()
         self.cfg = det_cfg or DetectorConfig()
-        self.det_l = BlobDetector(self.cfg)
-        self.det_r = BlobDetector(self.cfg)
+        self.detector_backend = detector_backend
+        if detector_backend == "blob":
+            self.det_l = BlobDetector(self.cfg)
+            self.det_r = BlobDetector(self.cfg)
+            self.yolo_detector = None
+        elif detector_backend == "yoloe":
+            self.det_l = self.det_r = None
+            self.yolo_detector = YOLOETrashDetector(
+                model_path=yolo_model, confidence=yolo_confidence, device=yolo_device
+            )
+        else:
+            raise ValueError(f"Unsupported detector backend: {detector_backend!r}")
         self._last_l = None
-        self._prev = {"L": None, "R": None}     # previous detection (t, u, v) per camera
+        self._prev = {"L": None, "R": None}
+
+    @staticmethod
+    def _select_yolo_pair(left_items, right_items, last_left=None):
+        candidates = []
+        for left in left_items:
+            for right in right_items:
+                if object_family(left.label) != object_family(right.label):
+                    continue
+                row_error = abs(left.center[1] - right.center[1])
+                disparity = left.center[0] - right.center[0]
+                if row_error > 14.0 or disparity <= 2.0:
+                    continue
+                ratio = max(left.area, right.area) / max(1.0, min(left.area, right.area))
+                if ratio > 8.0:
+                    continue
+                score = row_error / 14.0 + 0.10 * abs(np.log(ratio))
+                score -= 0.35 * (left.confidence + right.confidence)
+                if last_left is not None:
+                    score += 0.25 * np.hypot(
+                        left.center[0] - last_left[0], left.center[1] - last_left[1]
+                    ) / 100.0
+                candidates.append((score, left, right))
+        if not candidates:
+            return None
+        _, left, right = min(candidates, key=lambda item: item[0])
+        return left, right
 
     def triangulate(self, ul, vl, ur, vr) -> Optional[Tuple[float, float, float]]:
         c = self.cfg
@@ -175,8 +242,20 @@ class StereoTracker:
         pts = cv2.triangulatePoints(self.calib.P1, self.calib.P2,
                                     np.array([[ul], [vl]], dtype=float),
                                     np.array([[ur], [vr]], dtype=float))
-        xc, yc, zc = (pts[:3, 0] / pts[3, 0]).tolist()
-        if not (0.2 < zc < c.max_depth_m):
+        w = float(pts[3, 0])
+        if not np.isfinite(w) or abs(w) < 1e-9:
+            return None
+        rectified_point = pts[:3, 0] / w
+        if not np.all(np.isfinite(rectified_point)):
+            return None
+        # Depth validity is checked in the rectified stereo coordinate frame.
+        if not (0.2 < float(rectified_point[2]) < c.max_depth_m):
+            return None
+        # Convert to the ORIGINAL left-camera frame. RigGeometry expects camera X
+        # right, Y down, Z forward; it must not receive rectified-frame coordinates.
+        camera_point = self.calib.R1.T @ rectified_point
+        xc, yc, zc = (float(v) for v in camera_point)
+        if not np.all(np.isfinite(camera_point)) or zc <= 0:
             return None
         return xc, yc, zc
 
@@ -206,9 +285,24 @@ class StereoTracker:
         t_left = t if t_left is None else t_left
         t_right = t if t_right is None else t_right
         left, right = self.calib.rectify(left, right)
-        dl = self.det_l.detect(left, self._last_l)
-        dr = self.det_r.detect(right)
-        pkt = {"timestamp": t, "detected": False, "X": 0.0, "Y": 0.0, "Z": 0.0, "blob_area": 0.0}
+        confidence, object_class = 1.0, "unknown"
+        if self.detector_backend == "yoloe":
+            left_items = self.yolo_detector.detect(left)
+            right_items = self.yolo_detector.detect(right)
+            pair = self._select_yolo_pair(left_items, right_items, self._last_l)
+            if pair is None:
+                dl = dr = None
+            else:
+                item_l, item_r = pair
+                dl = (item_l.center[0], item_l.center[1], item_l.area)
+                dr = (item_r.center[0], item_r.center[1], item_r.area)
+                confidence = min(item_l.confidence, item_r.confidence)
+                object_class = item_l.label
+        else:
+            dl = self.det_l.detect(left, self._last_l)
+            dr = self.det_r.detect(right)
+        pkt = {"timestamp": t, "detected": False, "X": 0.0, "Y": 0.0, "Z": 0.0,
+               "blob_area": 0.0, "detection_confidence": 0.0, "object_class": "unknown"}
         if dl is None:
             self._prev["L"] = None
         if dr is None:
@@ -224,5 +318,6 @@ class StereoTracker:
             return pkt
         self._last_l = (dl[0], dl[1])
         X, Y, Z = self.rig.cam_to_world(*p)
-        pkt.update(detected=True, X=X, Y=Y, Z=Z, blob_area=float(0.5 * (dl[2] + dr[2])))
+        pkt.update(detected=True, X=X, Y=Y, Z=Z, blob_area=float(0.5 * (dl[2] + dr[2])),
+                   detection_confidence=float(confidence), object_class=object_class)
         return pkt
