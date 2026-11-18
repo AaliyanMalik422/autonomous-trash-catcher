@@ -18,6 +18,18 @@ import numpy as np
 from .stereo_tracker import StereoCalibration
 
 
+def ensure_empty_capture_directory(path):
+    """Create a calibration output folder and reject old captures from another session."""
+    os.makedirs(path, exist_ok=True)
+    existing = (glob.glob(os.path.join(path, "left_*.png"))
+                + glob.glob(os.path.join(path, "right_*.png")))
+    if existing:
+        raise SystemExit(
+            f"Calibration output directory {path!r} already contains camera captures. "
+            "Use a fresh empty directory for each calibration session to prevent mixed pairs."
+        )
+
+
 def capture(a):
     from .cameras import StereoCameras
     from trajectory.robot_config import load_settings
@@ -26,7 +38,7 @@ def capture(a):
     a.right = a.right or st.right
     if "PHONE" in str(a.left) + str(a.right):
         raise SystemExit("Edit config/robot.json first: put the real stream URLs in left/right.")
-    os.makedirs(a.out, exist_ok=True)
+    ensure_empty_capture_directory(a.out)
     cams = StereoCameras(a.left, a.right, st.width, st.height, st.fps, swap=st.swap,
                          max_skew_s=0.05)   # hold the board still while saving
     n, seq = 0, -1
