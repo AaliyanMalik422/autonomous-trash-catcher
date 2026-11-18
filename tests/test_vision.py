@@ -145,3 +145,40 @@ def test_parse_usb_camera_indices_and_stream_urls():
     assert parse_source("0") == 0
     assert parse_source("1") == 1
     assert parse_source("http://192.168.1.20:8080/video") == "http://192.168.1.20:8080/video"
+
+
+def test_triangulation_returns_original_left_camera_frame_after_rectification():
+    # The rectified projection matrices reconstruct R1 @ point. The tracker must
+    # rotate that point back before applying RigGeometry.
+    from vision.stereo_tracker import DetectorConfig
+    angle = np.radians(8.0)
+    R1 = np.array([
+        [1.0, 0.0, 0.0],
+        [0.0, np.cos(angle), np.sin(angle)],
+        [0.0, -np.sin(angle), np.cos(angle)],
+    ])
+    base = StereoCalibration.ideal(focal_px=600.0, baseline_m=0.12)
+    cal = StereoCalibration(base.image_size, base.P1, base.P2, R1=R1)
+    tracker = StereoTracker(cal, RigGeometry(), det_cfg=DetectorConfig(min_disparity_px=0.1))
+    expected = np.array([0.15, 0.08, 2.5])
+    rect = R1 @ expected
+    fx, cx, cy = cal.P1[0, 0], cal.P1[0, 2], cal.P1[1, 2]
+    ul = fx * rect[0] / rect[2] + cx
+    vl = fx * rect[1] / rect[2] + cy
+    ur = ul - fx * cal.baseline / rect[2]
+    actual = tracker.triangulate(ul, vl, ur, vl)
+    assert actual is not None
+    assert np.allclose(actual, expected, atol=1e-5)
+
+
+def test_calibration_rejects_frame_size_mismatch():
+    cal = StereoCalibration.ideal(width=640, height=480)
+    left = np.zeros((480, 640, 3), dtype=np.uint8)
+    wrong = np.zeros((720, 1280, 3), dtype=np.uint8)
+    with pytest.raises(ValueError, match="Camera frame size must match calibration"):
+        cal.rectify(left, wrong)
+
+
+def test_calibration_rejects_invalid_rectification_rotation():
+    with pytest.raises(ValueError, match="R1 must be a finite 3x3"):
+        StereoCalibration((640, 480), np.eye(3), np.eye(3), R1=np.eye(2))
