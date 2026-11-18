@@ -489,39 +489,56 @@ static void sendTo(const char *msg) {
 }
 
 // body = text between '<' and '>' e.g. "POS,0.30,0.00"
+static bool parseFiniteArg(const char *text, float &value) {
+  if (!text || !*text) return false;
+  char *end = nullptr;
+  value = strtof(text, &end);
+  return end != text && *end == '\\0' && isfinite(value);
+}
+
 static void handleCmd(char *body) {
   char *cmd = strtok(body, ",");
   if (!cmd) return;
   float a[3] = {0, 0, 0};
   int n = 0;
   char *t;
-  while (n < 3 && (t = strtok(nullptr, ","))) a[n++] = (float)atof(t);
+  while ((t = strtok(nullptr, ",")) != nullptr) {
+    if (n >= 3 || !parseFiniteArg(t, a[n])) return;
+    ++n;
+  }
 
   if (!strcmp(cmd, "VEL")) {                 // <VEL,vx,vy,w>   vx ignored (no strafing)
+    if (n != 3) return;
     mode = MODE_VEL;
     moveRobot(0.0f, a[1], a[2]);
   } else if (!strcmp(cmd, "POS")) {          // <POS,x,y> relative to ZERO point
+    if (n != 2) return;
     posTx = a[0]; posTy = a[1];
     lastPosMs = millis();
     mode = MODE_POS;
   } else if (!strcmp(cmd, "HOME")) {
+    if (n != 0) return;
     posTx = 0; posTy = 0;
     lastPosMs = millis();
     mode = MODE_POS;
   } else if (!strcmp(cmd, "STOP")) {
+    if (n != 0) return;
     mode = MODE_VEL;
     moveRobot(0.0f, 0.0f, 0.0f);
   } else if (!strcmp(cmd, "ZERO")) {
+    if (n != 0) return;
     // ZERO is also a safe reset: cancel any stale position target from a prior run.
     mode = MODE_VEL;
     posTx = posTy = 0;
     moveRobot(0.0f, 0.0f, 0.0f);
     odoX = 0; odoY = 0; odoTh = 0;
-  } else if (strcmp(cmd, "PING") != 0) {
+  } else if (!strcmp(cmd, "PING")) {
+    if (n != 0) return;
+  } else {
     return;                                  // unknown command: ignore
   }
   char reply[40];
-  snprintf(reply, sizeof(reply), "<ACK,%s>\n", cmd);
+  snprintf(reply, sizeof(reply), "<ACK,%s>\\n", cmd);
   sendTo(reply);
 }
 
