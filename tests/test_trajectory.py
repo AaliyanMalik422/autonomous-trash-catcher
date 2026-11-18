@@ -206,6 +206,8 @@ def test_reach_distance():
 # ---------------------------------------------------------------- calibration
 def test_correction_identity_and_fit(tmp_path):
     assert LandingCorrection().apply(1.0, 2.0) == (1.0, 2.0)
+    with pytest.raises(ValueError, match="finite"):
+        LandingCorrection(A=[[float("nan"), 0], [0, 1]])
     rng = np.random.default_rng(0)
     P = rng.uniform(-0.5, 0.5, (30, 2))
     A = np.array([[1.05, 0.02], [-0.01, 0.97]])
