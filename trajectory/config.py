@@ -70,6 +70,7 @@ class EngineConfig:
     max_speed: float = 0.9         # m/s; firmware POS_MAX_V for autonomous position moves
     max_turn_rate: float = 2.0    # rad/s; conservative vs firmware POS_MAX_W=3.0
     max_turn_accel: float = 10.0  # rad/s^2; conservative vs firmware MAX_ANG_ACCEL=20.0
+    drive_heading_tolerance_rad: float = 0.35  # firmware HEAD_DRIVE_RAD
     turn_time_margin: float = 1.25
 
 
