@@ -273,7 +273,9 @@ def mode_live(a):
     eng = build_engine(a)
     rec = Recorder() if a.record else None
     cams = StereoCameras(a.left, a.right, calib.image_size[0], calib.image_size[1], a.fps, a.swap,
-                         right_offset_s=a.right_offset_ms / 1000.0)
+                         right_offset_s=a.right_offset_ms / 1000.0,
+                         left_rotate_180=a.left_rotate_180,
+                         right_rotate_180=a.right_rotate_180)
     link = make_link(a)
     seq, was_active = -1, False
     try:
@@ -388,6 +390,8 @@ def main():
     a = ap.parse_args()
     st = load_settings(a.config)               # config/robot.json (if present) + defaults
     for name, value in (("left", st.left), ("right", st.right), ("fps", st.fps),
+                        ("left_rotate_180", st.left_rotate_180),
+                        ("right_rotate_180", st.right_rotate_180),
                         ("right_offset_ms", st.right_offset_ms), ("latency_s", st.latency_s),
                         ("home_x", st.home_x), ("home_y", st.home_y), ("calib", st.calib),
                         ("rig", st.rig), ("correction", st.correction), ("swap", st.swap),
