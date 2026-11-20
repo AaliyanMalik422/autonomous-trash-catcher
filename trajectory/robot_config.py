@@ -18,6 +18,8 @@ class RobotSettings:
     left: str = "0"
     right: str = "1"
     swap: bool = False                 # set true if "left" is actually the right-hand camera
+    left_rotate_180: bool = False      # rotate left-camera frames 180 degrees before processing
+    right_rotate_180: bool = False     # rotate right-camera frames 180 degrees before processing
     fps: int = 30
     width: int = 640                   # 640x480 is the sweet spot: ~8 ms/frame-pair on a laptop CPU
     height: int = 480
@@ -38,6 +40,8 @@ class RobotSettings:
             raise ValueError("Both camera sources must be non-empty")
         if str(self.left).strip() == str(self.right).strip():
             raise ValueError("Left and right camera sources must be different")
+        if not isinstance(self.left_rotate_180, bool) or not isinstance(self.right_rotate_180, bool):
+            raise ValueError("Camera rotation settings must be true or false")
         if self.fps <= 0 or self.width <= 0 or self.height <= 0:
             raise ValueError("Camera FPS, width, and height must be positive")
         if not 1 <= int(self.wifi_port) <= 65535:
