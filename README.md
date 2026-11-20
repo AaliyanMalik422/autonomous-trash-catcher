@@ -126,7 +126,9 @@ Stereo depth requires a calibration captured from the actual camera mount.
 1. Print a checkerboard with 9 × 6 inner corners.
 2. Measure the physical side length of one square.
 3. Configure the left and right camera sources in config/robot.json.
-4. Capture 20–30 synchronized pairs with the board at varied positions and angles.
+4. For each phone mounted upside down, set its corresponding `left_rotate_180` or
+   `right_rotate_180` option to `true`. Keep the same setting for calibration and live operation.
+5. Capture 20–30 synchronized pairs with the board at varied positions and angles.
 
 ~~~bash
 python -m vision.calibrate_stereo capture --left 0 --right 1 --out calib_images
