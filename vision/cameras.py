@@ -103,8 +103,10 @@ class _Source:
 
     RECONNECT_AFTER_S = 3.0
 
-    def __init__(self, source: Source, width, height, fps, fourcc="MJPG", capture=None):
+    def __init__(self, source: Source, width, height, fps, fourcc="MJPG", capture=None,
+                 rotate_180=False):
         self.source, self.w, self.h, self.fps, self.fourcc = source, width, height, fps, fourcc
+        self.rotate_180 = bool(rotate_180)
         self.cap = capture
         self._injected = capture is not None
         if self.cap is None:
@@ -138,6 +140,8 @@ class _Source:
             t = time.monotonic()
             if ok:
                 ok, frame = self.cap.retrieve()
+            if ok and frame is not None and self.rotate_180:
+                frame = cv2.rotate(frame, cv2.ROTATE_180)
             if not ok or frame is None:
                 if not self._injected and t - self.last_ok > self.RECONNECT_AFTER_S:
                     self._reconnect()
@@ -162,17 +166,22 @@ class _Source:
 class StereoCameras:
     def __init__(self, left: Source = 0, right: Source = 1, width=640, height=480, fps=30,
                  swap=False, fourcc="MJPG", right_offset_s: float = 0.0,
-                 max_skew_s: Optional[float] = None, captures=None):
+                 max_skew_s: Optional[float] = None, captures=None,
+                 left_rotate_180=False, right_rotate_180=False):
         left, right = parse_source(left), parse_source(right)
+        left_rotate_180, right_rotate_180 = bool(left_rotate_180), bool(right_rotate_180)
         if swap:
             left, right = right, left
+            left_rotate_180, right_rotate_180 = right_rotate_180, left_rotate_180
         self.right_offset_s = right_offset_s
         # allow up to ~0.6 of a frame period of skew by default
         self.max_skew_s = max_skew_s if max_skew_s is not None else 0.6 / max(fps, 1)
         caps = captures or (None, None)
-        self.L = _Source(left, width, height, fps, fourcc, caps[0])
+        self.L = _Source(left, width, height, fps, fourcc, caps[0],
+                         rotate_180=left_rotate_180)
         try:
-            self.R = _Source(right, width, height, fps, fourcc, caps[1])
+            self.R = _Source(right, width, height, fps, fourcc, caps[1],
+                             rotate_180=right_rotate_180)
         except Exception:
             self.L.release()
             raise
