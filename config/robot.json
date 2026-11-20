@@ -2,6 +2,8 @@
   "left": "0",
   "right": "1",
   "swap": false,
+  "left_rotate_180": true,
+  "right_rotate_180": true,
   "fps": 30,
   "width": 640,
   "height": 480,
