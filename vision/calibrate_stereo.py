@@ -40,7 +40,9 @@ def capture(a):
         raise SystemExit("Edit config/robot.json first: put the real stream URLs in left/right.")
     ensure_empty_capture_directory(a.out)
     cams = StereoCameras(a.left, a.right, st.width, st.height, st.fps, swap=st.swap,
-                         max_skew_s=0.05)   # hold the board still while saving
+                         max_skew_s=0.05,
+                         left_rotate_180=st.left_rotate_180,
+                         right_rotate_180=st.right_rotate_180)  # hold board still while saving
     n, seq = 0, -1
     pattern = (a.cols, a.rows)
     while True:
