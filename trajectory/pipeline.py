@@ -91,6 +91,8 @@ class TrajectoryEngine:
         self._t_cooldown_end = 0.0
         self._sent_xy = None
         self._logged = False
+        self._moving = False        # a reachable target is already being driven to
+        self._rejected = False      # an unreachable/clamped target was already reported (STOP sent)
 
     # ---------------------------------------------------------------- helpers
     def _to_robot_frame(self, cx, cy):
@@ -121,6 +123,8 @@ class TrajectoryEngine:
         self._t_cooldown_end = t + self.cfg.engine.cooldown_s
         self.filter.reset()
         self._sent_xy = None
+        self._moving = False
+        self._rejected = False
         return Command("home") if self.cfg.engine.return_home else None
 
     # ------------------------------------------------------------------- API
@@ -181,6 +185,8 @@ class TrajectoryEngine:
         self._t_impact = pred.t_impact
         self._sent_xy = (cmd.x, cmd.y)
         self.last_command = cmd
+        self._moving = cmd.reachable and not cmd.clamped
+        self._rejected = not self._moving
         if self.logger and not self._logged:
             self.logger.log(pred, ttl_eff)
             self._logged = True
@@ -197,6 +203,16 @@ class TrajectoryEngine:
         if ttl_eff < e.min_ttl_s:
             return None
         cmd = self._make_command(pred, ttl_eff)
+        if not cmd.reachable or cmd.clamped:
+            # Reach is computed from rest at home, but the robot may already be part-way
+            # there. Never cancel a move in progress with STOP just because the remaining
+            # time shrank; keep the last valid target. Report a rejection only once.
+            if self._moving or self._rejected:
+                return None
+            self._rejected = True
+            self._sent_xy = (cmd.x, cmd.y)
+            self.last_command = cmd
+            return cmd
         if self._sent_xy is not None:
             dx = cmd.x - self._sent_xy[0]
             dy = cmd.y - self._sent_xy[1]
@@ -204,4 +220,6 @@ class TrajectoryEngine:
                 return None
         self._sent_xy = (cmd.x, cmd.y)
         self.last_command = cmd
+        self._moving = True
+        self._rejected = False
         return cmd

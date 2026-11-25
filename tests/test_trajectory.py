@@ -147,10 +147,12 @@ def test_engine_throw_produces_correct_target():
     eng, cmds = _run_engine(pk)
     targets = [c for _, c in cmds if c.kind == "target"]
     assert targets, "engine never sent a target"
-    last = targets[-1]
+    # Judge the final refined prediction: rejected (unreachable) refinements are
+    # intentionally not re-sent as commands, so targets[-1] may be an early estimate.
+    last = eng.last_prediction
     e = eng.cfg.engine
-    assert abs(last.x - e.sign_x * (tl["X_land"] - e.home_x)) < 0.10
-    assert abs(last.y - e.sign_y * (tl["Y_land"] - e.home_y)) < 0.10
+    assert abs(e.sign_x * (last.x - e.home_x) - e.sign_x * (tl["X_land"] - e.home_x)) < 0.10
+    assert abs(e.sign_y * (last.y - e.home_y) - e.sign_y * (tl["Y_land"] - e.home_y)) < 0.10
     assert targets[0].ttl > 0.1          # sent early enough to be useful
 
 
@@ -315,3 +317,25 @@ def test_robot_settings_reject_invalid_camera_and_network_configuration():
         RobotSettings(wifi_port=70000)
     with pytest.raises(ValueError, match="finite"):
         RobotSettings(home_y=float("nan"))
+
+
+def test_refinement_never_stops_robot_already_moving_to_valid_target():
+    cam = MockStereoCamera(fps=30, noise_std_meters=0.0, seed=7)
+    pk, _ = cam.generate_throw(start_pos=(0.2, 2.8, 1.3), velocity=(-0.28, -1.8, 2.2))
+    eng = TrajectoryEngine(Config())
+    _, cmds = _run_engine(pk, eng)
+    targets = [c for _, c in cmds if c.kind == "target"]
+    assert targets and targets[0].reachable
+    first_valid = next(i for i, c in enumerate(targets) if c.reachable)
+    # after a valid target was sent, no later target command may be a rejection (-> STOP)
+    assert all(c.reachable and not c.clamped for c in targets[first_valid:])
+
+
+def test_unreachable_throw_reports_rejection_only_once():
+    cfg = Config()
+    cam = MockStereoCamera(fps=60, noise_std_meters=0.0)
+    pk, _ = cam.generate_throw(start_pos=(0.0, 2.6, 1.3), velocity=(2.0, -1.0, 2.2))
+    eng = TrajectoryEngine(cfg)
+    _, cmds = _run_engine(pk, eng)
+    rejected = [c for _, c in cmds if c.kind == "target" and (c.clamped or not c.reachable)]
+    assert len(rejected) <= 1
