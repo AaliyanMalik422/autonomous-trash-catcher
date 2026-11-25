@@ -48,7 +48,16 @@ def open_capture(source: Source, width=640, height=480, fps=30, fourcc="MJPG"):
 
 
 def parse_source(s) -> Source:
-    return int(s) if isinstance(s, (int,)) or str(s).isdigit() else str(s)
+    if isinstance(s, int):
+        return s
+    s = str(s).strip()
+    if s.isdigit():
+        return int(s)
+    if s.startswith("/dev/video"):
+        rem = s[len("/dev/video"):]
+        if rem.isdigit():
+            return int(rem)
+    return s
 
 
 def pair_frames(t_left: float, right_hist, right_offset_s: float, max_skew_s: float):
