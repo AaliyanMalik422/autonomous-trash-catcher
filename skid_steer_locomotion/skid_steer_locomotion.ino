@@ -624,7 +624,12 @@ void setup() {
   }
   if (!sta) {
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(AP_SSID, AP_PASS);
+    IPAddress apIP(192, 168, 4, 1);
+    IPAddress gateway(192, 168, 4, 1);
+    IPAddress subnet(255, 255, 255, 0);
+    WiFi.softAPConfig(apIP, gateway, subnet);
+    WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 4);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
   }
   WiFi.setSleep(false);                 // WiFi power-save adds random lag
 
